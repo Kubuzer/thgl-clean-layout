@@ -1,0 +1,5 @@
+/* Dashboard: reclaim the 360px advertisement sidebar. */
+div[class~="w-[360px]"]:has(#thgl-dashboard) { display: none !important; }
+
+/* AION 2 map: hide the bottom-right ad overlay, not the map. */
+div.fixed:has(#thgl-aion2-overlay-overlay-small) { display: none !important; }
