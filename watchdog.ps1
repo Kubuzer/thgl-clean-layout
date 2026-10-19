@@ -114,7 +114,8 @@ function FindControl($parent, [string]$name, $kind) {
     return $null
 }
 function FindDevTools([string]$path) {
-    $pattern = '^DevTools - app\.th\.gl/' + [regex]::Escape($path) + '/?(?:[?#].*| - .*)?$'
+    $route = if ($path -eq 'dashboard') { 'dashboard(?:/[^?#\s]*)?' } else { [regex]::Escape($path) + '/?' }
+    $pattern = '^DevTools - app\.th\.gl/' + $route + '(?:[?#].*| - .*)?$'
     foreach ($window in (Windows)) {
         if ($window.Current.Name -match $pattern) { return $window }
     }

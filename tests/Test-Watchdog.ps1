@@ -162,9 +162,35 @@ $found = FindDevTools 'dashboard'
 Assert ($found.Current.ProcessId -eq 333) 'Foreign process or path suffix was accepted'
 Assert ($appProcessIds.ContainsKey(333) -and -not $appProcessIds.ContainsKey(999)) 'Process ancestry is incorrect'
 
+# Dashboard navigation changes the DevTools title without changing the view.
+foreach ($title in @(
+    'DevTools - app.th.gl/dashboard',
+    'DevTools - app.th.gl/dashboard/',
+    'DevTools - app.th.gl/dashboard?test=1',
+    'DevTools - app.th.gl/dashboard#test',
+    'DevTools - app.th.gl/dashboard - TH.GL',
+    'DevTools - app.th.gl/dashboard/settings',
+    'DevTools - app.th.gl/dashboard/games/aion2',
+    'DevTools - app.th.gl/dashboard/games/aion2?test=1#map'
+)) {
+    ResetFixture
+    $script:appProcessIds = GetAppProcessIds $app
+    $windows.Add((NewWindow 'dashboard' 222 $title))
+    Assert ($null -ne (FindDevTools 'dashboard')) "Dashboard title not recognized: $title"
+}
+foreach ($title in @(
+    'DevTools - app.th.gl/apps/aion2/overlay-lookalike',
+    'DevTools - app.th.gl/apps/aion2/overlay/settings'
+)) {
+    ResetFixture
+    $script:appProcessIds = GetAppProcessIds $app
+    $windows.Add((NewWindow 'overlay' 222 $title))
+    Assert ($null -eq (FindDevTools 'apps/aion2/overlay')) "Unexpected overlay route accepted: $title"
+}
+
 # 3. Starting the watchdog must preserve an already-open view.
 ResetFixture
-$windows.Add((NewWindow 'dashboard'))
+$windows.Add((NewWindow 'dashboard' 222 'DevTools - app.th.gl/dashboard/games/aion2'))
 Tick
 Assert ($invokeCount -eq 0 -and [System.Windows.Forms.SendKeys]::Calls -eq 0) 'Existing user window was reloaded on startup'
 Assert ($appIdentity.StartsWith('123:')) 'Another session was selected'
