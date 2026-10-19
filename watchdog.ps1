@@ -244,7 +244,7 @@ try {
     Log "Watchdog started (Once=$Once)"
     do {
         try { Tick } catch { LogRetry $_.Exception.Message }
-        if (-not $Once) { Start-Sleep -Seconds 7 }
+        if (-not $Once) { Start-Sleep -Seconds 2 }
     } while (-not $Once)
 } finally {
     if ($logStream) { $logStream.Dispose() }

@@ -83,7 +83,7 @@ flowchart LR
 | `watchdog.ps1` | Detects TH.GL windows, opens DevTools when needed, refreshes the views, and minimizes DevTools. |
 | `clean-layout.css` | Two targeted CSS rules that hide the dashboard and AION 2 map ad containers. |
 
-The upstream CSS is downloaded **to your computer**; this repository does not redistribute TH.GL assets. The watchdog checks roughly every 7 seconds. Its script is installed in the administrator-protected `Program Files\THGL-Clean-Layout` directory because the scheduled task may need elevated privileges.
+The upstream CSS is downloaded **to your computer**; this repository does not redistribute TH.GL assets. The watchdog waits 2 seconds between checks, reducing the delay before it detects a new overlay. Window inspection, DevTools startup, and loading the stylesheet add their own time, so ads can still be visible briefly. Its script is installed in the administrator-protected `Program Files\THGL-Clean-Layout` directory because the scheduled task may need elevated privileges.
 
 The watchdog matches windows to TH.GL and its child processes in the current Windows session. If DevTools opens before Console is ready, it retries the unfinished refresh with a delay of 7–60 seconds. Completed refreshes are not repeated on every poll. Dashboard and overlay retries are independent. Logs rotate on startup and at approximately 2 MiB, retaining one previous log. Each session creates its own log file rather than appending through an existing filesystem link.
 
