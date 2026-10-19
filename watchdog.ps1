@@ -125,6 +125,8 @@ function OpenAndRefresh([string]$buttonName, [string]$path, $main) {
     # A previous attempt may have opened DevTools before its Console was ready.
     $dev = FindDevTools $path
     if (-not $dev) {
+        $mainPattern = $main.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern)
+        $mainPattern.SetWindowVisualState([System.Windows.Automation.WindowVisualState]::Normal)
         $buttonType = [System.Windows.Automation.ControlType]::Button
         $button = FindControl $main $buttonName $buttonType
         if (-not $button) {
@@ -232,9 +234,10 @@ function Tick {
             break
         }
     }
-    $main = [System.Windows.Automation.AutomationElement]::FromHandle($app.MainWindowHandle)
-    EnsureView 'dashboard' 'dashboard' $main
-    if ($overlayPresent) { EnsureView 'aion2 (overlay)' 'apps/aion2/overlay' $main }
+    $main = @((Windows) | Where-Object { $_.Current.ProcessId -eq $app.Id -and $_.Current.Name -eq 'The Hidden Gaming Lair' })
+    if ($main.Count -ne 1) { return }
+    EnsureView 'dashboard' 'dashboard' $main[0]
+    if ($overlayPresent) { EnsureView 'aion2 (overlay)' 'apps/aion2/overlay' $main[0] }
 }
 
 try {

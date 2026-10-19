@@ -64,10 +64,14 @@ function ResetFixture {
     $script:typed = @{}; $script:invokeCount = 0
     $script:hasApp = $true; $script:failDashboard = $false
     $script:keepPromptFocus = $true
+    $script:mainRestores = 0
     $script:app = [pscustomobject]@{
         Id=123; MainWindowHandle=[IntPtr]42; StartTime=[DateTime]'2026-01-01'
         SessionId=[Diagnostics.Process]::GetCurrentProcess().SessionId
     }
+    $script:windows.Add((NewWindow 'controller' 123 'Controller'))
+    $script:main = NewWindow 'main' 123 'The Hidden Gaming Lair'
+    $script:windows.Add($main)
     [THGLTest.Forms.SendKeys]::Calls = 0
     [ThglForeground]::KeepFocus = $true
 }
@@ -78,8 +82,11 @@ function NewWindow([string]$path, [int]$processId=222, [string]$title='') {
     }}
     $window | Add-Member ScriptMethod GetCurrentPattern {
         param($pattern)
-        $result = [pscustomobject]@{}
-        $result | Add-Member ScriptMethod SetWindowVisualState {param($state)}
+        $result = [pscustomobject]@{Path=$this.Path}
+        $result | Add-Member ScriptMethod SetWindowVisualState {
+            param($state)
+            if ($this.Path -eq 'main') { $script:mainRestores++ }
+        }
         return $result
     }
     return $window
@@ -105,6 +112,7 @@ function Get-CimInstance {
 function FindControl {
     param($parent, [string]$name, $kind)
     if ($name -in @('dashboard', 'aion2 (overlay)')) {
+        if ($parent.Current.Name -ne 'The Hidden Gaming Lair' -or $parent.Current.ProcessId -ne $app.Id) { return $null }
         if ($name -eq 'dashboard' -and $script:failDashboard) { return $null }
         $path = if ($name -eq 'dashboard') { 'dashboard' } else { 'apps/aion2/overlay' }
         $button = [pscustomobject]@{Path=$path}
@@ -195,6 +203,7 @@ $windows.Add((NewWindow 'dashboard' 222 'DevTools - app.th.gl/dashboard/games/ai
 Tick
 Assert ($invokeCount -eq 0 -and [THGLTest.Forms.SendKeys]::Calls -eq 0) 'Existing user window was reloaded on startup'
 Assert ($appIdentity.StartsWith('123:')) 'Another session was selected'
+Assert ($mainRestores -eq 0) 'Dashboard was restored despite existing DevTools'
 
 # 4. A dashboard error must not starve the overlay.
 ResetFixture
@@ -226,12 +235,21 @@ Tick
 Assert ($refreshStates.Count -eq 0 -and $appProcessIds.Count -eq 0) 'Exited application retained state'
 $hasApp = $true
 $windows.Clear()
+$windows.Add($main)
 $app.StartTime = $app.StartTime.AddMinutes(1)
 $ready['dashboard'] = $true
 $keepPromptFocus = $true
 [ThglForeground]::KeepFocus = $true
 Tick
 Assert ($refreshStates['dashboard'].Ready) 'Restarted application did not attach'
+Assert ($mainRestores -gt 0) 'Dashboard was not restored before opening missing DevTools'
+
+# A same-title window outside the app must not replace a missing dashboard.
+ResetFixture
+$windows.Remove($main) | Out-Null
+$windows.Add((NewWindow 'main' 999 'The Hidden Gaming Lair'))
+Tick
+Assert ($invokeCount -eq 0 -and [THGLTest.Forms.SendKeys]::Calls -eq 0) 'Controller or foreign dashboard was used'
 
 # 7. Distinct errors cannot grow the retry log dictionary without bound.
 ResetFixture
