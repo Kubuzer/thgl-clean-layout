@@ -171,7 +171,7 @@ function OpenAndRefresh([string]$buttonName, [string]$path, $main) {
         $prompt.SetFocus()
         Start-Sleep -Milliseconds 150
         if ([ThglForeground]::GetForegroundWindow() -ne [IntPtr]$dev.Current.NativeWindowHandle -or
-            -not [System.Windows.Automation.AutomationElement]::Compare(
+            -not [System.Windows.Automation.Automation]::Compare(
                 [System.Windows.Automation.AutomationElement]::FocusedElement, $prompt)) {
             throw 'Console did not retain focus'
         }

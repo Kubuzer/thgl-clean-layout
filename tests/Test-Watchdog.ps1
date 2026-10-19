@@ -1,15 +1,10 @@
 # Logic regression tests with inert UI APIs; no real windows or keys are touched.
-# Run in a fresh PowerShell process. The production function bodies are unchanged.
+# Production logic is unchanged; UI namespaces are redirected to inert fixtures.
 #requires -Version 5.1
 $ErrorActionPreference = 'Stop'
-# Use fixture types on Linux. On Windows the real framework types may already
-# be loaded, so execute this fixture suite in pwsh where UIAutomation is absent.
-if ('System.Windows.Automation.AutomationElement' -as [type]) {
-    throw 'Run this fixture suite in a fresh pwsh process without UIAutomation loaded.'
-}
 Add-Type -TypeDefinition @'
 using System;
-namespace System.Windows.Automation {
+namespace THGLTest.Automation {
   public static class ControlType {
     public static readonly object Button = "Button", Hyperlink = "Hyperlink", TabItem = "TabItem", Edit = "Edit";
   }
@@ -23,10 +18,12 @@ namespace System.Windows.Automation {
   public static class AutomationElement {
     public static object RootElement, FocusedElement;
     public static object FromHandle(IntPtr h) { return new object(); }
+  }
+  public static class Automation {
     public static bool Compare(object a, object b) { return object.ReferenceEquals(a,b); }
   }
 }
-namespace System.Windows.Forms {
+namespace THGLTest.Forms {
   public static class SendKeys {
     public static int Calls;
     public static void SendWait(string value) { Calls++; }
@@ -50,7 +47,8 @@ $definitions = $ast.FindAll({param($node)
 }, $true)
 foreach ($name in @('LogRetry', 'GetAppProcessIds', 'Windows', 'FindDevTools', 'OpenAndRefresh', 'EnsureView', 'Tick')) {
     $definition = $definitions | Where-Object Name -eq $name
-    . ([scriptblock]::Create($definition.Extent.Text))
+    $body = $definition.Extent.Text.Replace('[System.Windows.Automation.', '[THGLTest.Automation.').Replace('[System.Windows.Forms.', '[THGLTest.Forms.')
+    . ([scriptblock]::Create($body))
 }
 $checks = 0
 function Assert($condition, [string]$message) {
@@ -65,11 +63,12 @@ function ResetFixture {
     $script:ready = @{'dashboard'=$false; 'apps/aion2/overlay'=$true}
     $script:typed = @{}; $script:invokeCount = 0
     $script:hasApp = $true; $script:failDashboard = $false
+    $script:keepPromptFocus = $true
     $script:app = [pscustomobject]@{
         Id=123; MainWindowHandle=[IntPtr]42; StartTime=[DateTime]'2026-01-01'
         SessionId=[Diagnostics.Process]::GetCurrentProcess().SessionId
     }
-    [System.Windows.Forms.SendKeys]::Calls = 0
+    [THGLTest.Forms.SendKeys]::Calls = 0
     [ThglForeground]::KeepFocus = $true
 }
 function NewWindow([string]$path, [int]$processId=222, [string]$title='') {
@@ -128,29 +127,31 @@ function FindControl {
         $prompt = [pscustomobject]@{Path=$parent.Path}
         $prompt | Add-Member ScriptMethod GetCurrentPattern {param($pattern); return $this}
         $prompt | Add-Member ScriptMethod SetValue {param($value); $script:typed[$this.Path] = $value}
-        $prompt | Add-Member ScriptMethod SetFocus { [System.Windows.Automation.AutomationElement]::FocusedElement = $this }
+        $prompt | Add-Member ScriptMethod SetFocus {
+            [THGLTest.Automation.AutomationElement]::FocusedElement = if ($script:keepPromptFocus) { $this } else { [pscustomobject]@{} }
+        }
         return $prompt
     }
     throw "Unexpected lookup: $name"
 }
 $rootElement = [pscustomobject]@{}
 $rootElement | Add-Member ScriptMethod FindAll {param($scope,$condition); return $script:windows.ToArray()}
-[System.Windows.Automation.AutomationElement]::RootElement = $rootElement
+[THGLTest.Automation.AutomationElement]::RootElement = $rootElement
 
 # 1. Retry a failed refresh on the existing window; do not repeatedly reload.
 ResetFixture
 Tick
 Assert (-not $refreshStates['dashboard'].Ready) 'Transient Console failure must stay pending'
-Assert ($invokeCount -eq 1 -and [System.Windows.Forms.SendKeys]::Calls -eq 0) 'First attempt did not fail safely'
+Assert ($invokeCount -eq 1 -and [THGLTest.Forms.SendKeys]::Calls -eq 0) 'First attempt did not fail safely'
 Tick
 Assert ($invokeCount -eq 1) 'Backoff did not suppress an immediate retry'
 $ready['dashboard'] = $true
 $refreshStates['dashboard'].NextAttempt = [DateTime]::MinValue
 Tick
 Assert ($refreshStates['dashboard'].Ready) 'Refresh did not recover on the already-open window'
-Assert ($invokeCount -eq 1 -and [System.Windows.Forms.SendKeys]::Calls -eq 1) 'Recovery reopened a window or missed the key'
+Assert ($invokeCount -eq 1 -and [THGLTest.Forms.SendKeys]::Calls -eq 1) 'Recovery reopened a window or missed the key'
 Tick
-Assert ([System.Windows.Forms.SendKeys]::Calls -eq 1) 'Completed refresh repeated'
+Assert ([THGLTest.Forms.SendKeys]::Calls -eq 1) 'Completed refresh repeated'
 
 # 2. Restrict both process ancestry and the title path boundary.
 ResetFixture
@@ -192,7 +193,7 @@ foreach ($title in @(
 ResetFixture
 $windows.Add((NewWindow 'dashboard' 222 'DevTools - app.th.gl/dashboard/games/aion2'))
 Tick
-Assert ($invokeCount -eq 0 -and [System.Windows.Forms.SendKeys]::Calls -eq 0) 'Existing user window was reloaded on startup'
+Assert ($invokeCount -eq 0 -and [THGLTest.Forms.SendKeys]::Calls -eq 0) 'Existing user window was reloaded on startup'
 Assert ($appIdentity.StartsWith('123:')) 'Another session was selected'
 
 # 4. A dashboard error must not starve the overlay.
@@ -209,7 +210,15 @@ $ready['dashboard'] = $true
 [ThglForeground]::KeepFocus = $false
 Tick
 Assert (-not $refreshStates['dashboard'].Ready) 'Focus failure was marked successful'
-Assert ([System.Windows.Forms.SendKeys]::Calls -eq 0) 'Enter was sent without foreground focus'
+Assert ([THGLTest.Forms.SendKeys]::Calls -eq 0) 'Enter was sent without foreground focus'
+
+# Foreground alone is insufficient when a different control retains keyboard focus.
+ResetFixture
+$ready['dashboard'] = $true
+$keepPromptFocus = $false
+Tick
+Assert (-not $refreshStates['dashboard'].Ready) 'Prompt focus loss was marked successful'
+Assert ([THGLTest.Forms.SendKeys]::Calls -eq 0) 'Enter was sent to a different focused control'
 
 # 6. Missing/restarted application invalidates previous state.
 $hasApp = $false
@@ -219,6 +228,7 @@ $hasApp = $true
 $windows.Clear()
 $app.StartTime = $app.StartTime.AddMinutes(1)
 $ready['dashboard'] = $true
+$keepPromptFocus = $true
 [ThglForeground]::KeepFocus = $true
 Tick
 Assert ($refreshStates['dashboard'].Ready) 'Restarted application did not attach'
