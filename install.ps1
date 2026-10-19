@@ -157,6 +157,25 @@ if (-not $StageOnly) {
         -Settings $settings -Description 'Keep TH.GL dashboard and AION 2 overlay CSS Local Overrides active.' | Out-Null
     Start-ScheduledTask -TaskName $taskName
 }
-Write-Host "Installed CSS override: $overridePath"
-if ($StageOnly) { Write-Host 'Stage-only test: no scheduled task created.' }
-else { Write-Host 'Auto-start task installed. One-time DevTools folder approval is still required (see README).' }
+Write-Host ''
+Write-Host '================ TH.GL Clean Layout ================'
+Write-Host 'The CSS override file was created automatically.'
+Write-Host 'You do NOT need to add or drag files into DevTools.'
+Write-Host ''
+Write-Host 'SELECT THIS FOLDER in DevTools > Sources > Overrides:'
+Write-Host "  $InstallRoot"
+Write-Host ''
+Write-Host 'File created inside that folder:'
+Write-Host "  $overridePath"
+Write-Host ''
+if ($StageOnly) {
+    Write-Host 'Stage-only test completed. No scheduled task created.'
+} else {
+    Write-Host 'Next: TH.GL > Settings > Developer Tools > dashboard'
+    Write-Host '  Sources > left-side More tabs > Overrides > Select folder for overrides'
+    Write-Host '  Choose the folder above > Select Folder > Allow > check Local overrides.'
+    Write-Host '  Then start AION 2 and repeat for aion2 (overlay) using the SAME folder.'
+    Write-Host '  If Local overrides is already checked and the correct folder is shown, skip it.'
+    Write-Host 'Auto-start task installed. See README for the full guide.'
+}
+Write-Host '===================================================='

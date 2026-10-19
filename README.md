@@ -1,49 +1,106 @@
+<div align="center">
+
 # TH.GL Clean Layout
 
-Hide TH.GL's dashboard ad sidebar and the bottom-right ad panel on the **AION 2 interactive map**, while keeping the map and live position tracking intact.
+**A Windows tool that visually hides ads in TH.GL Companion.**
 
-**Windows only · TH.GL Companion App · tested with TH.GL 22.20.0**
+Hides the dashboard advertising sidebar and the bottom-right ad panel on the **AION 2 interactive map** using local CSS overrides.
 
-No modified executables, game memory access, network blocking, browser extensions, or third-party software installations. Uses **Microsoft Edge WebView2 DevTools Local Overrides** and a small Windows Task Scheduler watchdog.
+<p>
+  <img src="https://img.shields.io/badge/Platform-Windows-334155?style=flat-square" alt="Windows" />
+  <img src="https://img.shields.io/badge/PowerShell-5.1-334155?style=flat-square" alt="PowerShell 5.1" />
+  <img src="https://img.shields.io/badge/Tested-TH.GL%2022.20.0-155e63?style=flat-square" alt="Tested with TH.GL 22.20.0" />
+  <img src="https://img.shields.io/badge/License-MIT-155e63?style=flat-square" alt="MIT license" />
+</p>
 
-## Install
+</div>
 
-1. Download this repo as a ZIP and extract it. Review the scripts before running them.
-2. Open **Windows PowerShell 5.1 as Administrator** in the extracted folder, then run:
+> [!IMPORTANT]
+> **This script hides advertisements; it does not block them.** It applies CSS to make two advertising containers invisible and reclaim their screen space. Ad requests may still occur. It does not remove advertising code, unlock TH.GL's paid ad-free features, or modify the TH.GL executable.
 
-   ```powershell
-   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
-   ```
+## What it hides
 
-3. In **TH.GL → Settings → Developer Tools**, open **dashboard** DevTools. In **Sources → Overrides**, choose **Select folder for overrides** and select the folder printed by the installer (default: `Documents\THGL-Clean-Layout`). Allow file access and ensure **Local overrides** is checked. If DevTools was minimized automatically, restore it from the Windows taskbar.
-4. With AION 2 running, open **aion2 (overlay)** DevTools in the same TH.GL settings. Repeat **Sources → Overrides** setup, using the **same folder**.
-5. Refresh dashboard and map once. After that, the auto-start task will reopen/minimize DevTools and refresh the pages when needed. First appearance can take a few seconds.
+| TH.GL dashboard | AION 2 interactive map |
+|:--|:--|
+| **Hides the 360 px ad sidebar**, so the main content can use that space. | **Hides the bottom-right ad panel**, including the "Get AD Free" label. |
+| Dashboard navigation stays available. | Map controls and live player position tracking are not changed by the CSS. |
 
-**The folder selection/permission is a one-time, manual WebView2 security step.** The installer cannot grant it silently. If a source stylesheet changes after a TH.GL update, rerun `install.ps1` and refresh both views.
+No EXE patching, DNS blocking, browser extensions, game-memory access, or additional software installations. The tool uses **Microsoft Edge WebView2 DevTools Local Overrides** and a Windows scheduled task.
 
-## What it does
+**Why PowerShell?** Windows PowerShell installs the local CSS override and creates the scheduled task that reopens/minimizes DevTools after TH.GL starts. All source code is readable in this repository; review it before running anything as administrator. No game files are patched.
 
-- `clean-layout.css` contains **two narrowly scoped CSS rules**: hide the 360px dashboard ad sidebar and the map's fixed ad panel.
-- `install.ps1` fetches the **current common CSS stylesheet from `static.th.gl`**, appends these rules to a local override copy, then registers the **THGL Clean Layout** scheduled task for the current Windows user.
-- `watchdog.ps1` checks for TH.GL approximately every 7 seconds. When a relevant DevTools window is missing, it opens it via TH.GL's own **Developer Tools** buttons, refreshes the page and minimizes DevTools.
+## Quick start
 
-The downloaded upstream CSS is stored **locally only**; this repository redistributes none of TH.GL's assets. The task runs at **highest available privileges** because TH.GL may run as administrator. Its PowerShell script is stored in **`Program Files\THGL-Clean-Layout`** (administrator-writable), not in the user-writable overrides folder. It only interacts with TH.GL's windows; it does not read your game memory or credentials.
+**1.** [Download ZIP](../../archive/refs/heads/main.zip), extract it, and review the scripts.
+
+**2.** Open **Windows PowerShell 5.1 as Administrator** in the extracted folder and run:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+**3.** **Do not copy or drag any files into DevTools.** The installer has already created the CSS override on your computer. DevTools only needs permission to read that folder.
+
+Open **TH.GL > Settings > Developer Tools > dashboard**, then:
+
+   1. In DevTools, click **Sources** (top bar).
+   2. In the **left panel**, open **Overrides**. If you only see **Page** or **Workspace**, click the small **More tabs** arrow beside them and choose **Overrides**.
+   3. Click **Select folder for overrides**. In the Windows folder picker, select the **folder itself** (not a CSS file):
+
+      ```text
+      Documents\THGL-Clean-Layout\        <-- SELECT THIS FOLDER
+        static.th.gl\_next\static\chunks\...css  <-- created automatically
+      ```
+
+   4. Click **Select Folder** in the Windows dialog, then **Allow** when DevTools asks for access.
+   5. Make sure **Local overrides** is checked. If you can see the folder name and `static.th.gl` beneath it, **you're done** for this window.
+
+**4.** Start AION 2. Back in **TH.GL > Settings > Developer Tools**, open **aion2 (overlay)** DevTools. Repeat step 3 there, selecting **exactly the same `Documents\THGL-Clean-Layout` folder**. The dashboard and overlay are separate DevTools windows, so both require one-time folder access.
+
+**5.** Refresh the dashboard and map once. On later launches, the Windows task reopens/minimizes DevTools automatically. Ads may remain visible briefly until the watchdog attaches and the CSS takes effect. You do **not** need to upload, paste, or move the files in the `Overrides` panel.
+
+> [!NOTE]
+> Approving the Local Overrides folder in **both** DevTools windows is a one-time manual WebView2 permission step. The installer cannot approve it for you.
+
+> [!TIP]
+> **Can't find Overrides?** In **Sources**, use the **left-side More tabs** arrow next to **Page / Workspace**, not the DevTools three-dot menu at the top-right. Widen DevTools if necessary. [Microsoft Edge DevTools guidance](https://learn.microsoft.com/en-us/microsoft-edge/devtools/sources/).
+>
+> **Already see a folder and checked "Local overrides"?** That window is already connected; don't try to add individual files. Verify that it points to the **folder created by this installer**. The folder shown in personal setups may have a different name (for example, `THGL-Overrides` instead of this project's default `THGL-Clean-Layout`).
+
+## How ad hiding works
+
+```mermaid
+flowchart LR
+    A[TH.GL starts] --> B[Windows watchdog task]
+    B --> C[Open DevTools]
+    C --> D[Apply local CSS]
+    D --> E[Hide two ad containers]
+```
+
+| File | Purpose |
+|:--|:--|
+| `install.ps1` | Downloads a current TH.GL stylesheet to a local overrides folder, appends the ad-hiding CSS, and configures autostart. |
+| `watchdog.ps1` | Detects TH.GL windows, opens DevTools when needed, refreshes the views, and minimizes DevTools. |
+| `clean-layout.css` | Two targeted CSS rules that hide the dashboard and AION 2 map ad containers. |
+
+The upstream CSS is downloaded **to your computer**; this repository does not redistribute TH.GL assets. The watchdog checks roughly every 7 seconds. Its script is installed in the administrator-protected `Program Files\THGL-Clean-Layout` directory because the scheduled task may need elevated privileges.
 
 ## Uninstall
 
-In an **Administrator PowerShell** window from the extracted repo folder:
+Run this from the extracted repository in **Administrator PowerShell**:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Uninstall
 ```
 
-This removes the **THGL Clean Layout** task, its protected script, and CSS files managed by this project. In both DevTools windows you can also disable **Sources → Overrides → Local overrides** or revoke the folder permission. No other Task Scheduler tasks or TH.GL installation files are changed.
+This removes the project's scheduled task and generated local files. You can also disable **Local overrides** or revoke the folder permission in each DevTools window. TH.GL itself is not uninstalled or modified.
 
-## Limitations
+## Compatibility and limitations
 
-- The application UI, DevTools labels, ad elements or hashed CSS filenames may change between TH.GL versions; rerun the installer for updated CSS, or update the selectors when necessary.
-- DevTools may appear briefly, and the watchdog can cause a **one-time map/dashboard refresh** when it attaches. It requires an unlocked interactive Windows session.
-- Confirmed on one Windows setup with TH.GL 22.20.0; **not yet tested across other PCs or releases**. Use at your own risk.
-- Community project, **not affiliated with TH.GL**. Check TH.GL's applicable terms before using it.
+- **Windows only.** Tested on one PC with TH.GL Companion **22.20.0**; not yet validated on other PCs or versions.
+- **Visual hiding, not ad blocking.** Advertising requests can still be sent; the tool only changes how the two ad containers are displayed.
+- TH.GL updates may change CSS filenames, DOM elements, or Developer Tools controls. Rerun the installer if a CSS filename changes; selectors may also need updating.
+- DevTools must remain open (minimized is fine). The watchdog requires an unlocked interactive Windows session and may briefly reload the map when it attaches.
+- This is an **unofficial community project**, not affiliated with or endorsed by TH.GL. Check TH.GL's applicable terms before using it. Use at your own risk.
 
-Licensed under MIT; this license applies only to the files written for this repository.
+<sub>License: [MIT](LICENSE) applies to this repository's original files only.</sub>
