@@ -85,6 +85,19 @@ flowchart LR
 
 The upstream CSS is downloaded **to your computer**; this repository does not redistribute TH.GL assets. The watchdog checks roughly every 7 seconds. Its script is installed in the administrator-protected `Program Files\THGL-Clean-Layout` directory because the scheduled task may need elevated privileges.
 
+The watchdog matches windows to TH.GL and its child processes in the current Windows session. If DevTools opens before Console is ready, it retries the unfinished refresh with a delay of 7–60 seconds. Completed refreshes are not repeated on every poll. Dashboard and overlay retries are independent. Logs rotate on startup and at approximately 2 MiB, retaining one previous log. Each session creates its own log file rather than appending through an existing filesystem link.
+
+## Safe updates and recovery
+
+- The manifest accepts only a single CSS file in the generated stylesheet directory. Parent traversal, unexpected files, and symbolic links/junctions in managed paths are rejected.
+- New installations record SHA-256 hashes of the generated CSS and installed watchdog. If either file has been edited, update and uninstall stop rather than discarding the changes. Preserve or move the edited file before retrying. These hashes detect edits; the user-writable manifest is not an authentication mechanism.
+- Existing files without a recognized manifest are not overwritten. Legacy installations are migrated with copies of their CSS and watchdog under `Documents\THGL-Clean-Layout\backups`. Those backups are intentionally retained after uninstall.
+- Files are written through temporary files in the same directory. If a later operation fails, the installer attempts to restore the previous files and scheduled task. An incomplete rollback is reported explicitly. This handles caught errors; recovery after power loss or forcibly terminating PowerShell is not guaranteed.
+- Uninstall reports an error if it cannot remove a managed file and retains/restores the manifest for another attempt.
+- Diagnostic logs are discarded during uninstall and are not restored on rollback. Log removal unlinks files without copying their contents into recovery files.
+
+Use a normal filesystem directory for Local Overrides. Redirected Documents paths are supported when their filesystem path contains no symbolic links or junctions. Do not bypass a rejected path by running an altered elevated script.
+
 ## Uninstall
 
 Run this from the extracted repository in **Administrator PowerShell**:
@@ -101,6 +114,33 @@ This removes the project's scheduled task and generated local files. You can als
 - **Visual hiding, not ad blocking.** Advertising requests can still be sent; the tool only changes how the two ad containers are displayed.
 - TH.GL updates may change CSS filenames, DOM elements, or Developer Tools controls. Rerun the installer if a CSS filename changes; selectors may also need updating.
 - DevTools must remain open (minimized is fine). The watchdog requires an unlocked interactive Windows session and may briefly reload the map when it attaches.
+- The installer still requires administrator privileges. Path checks reject existing reparse points; they do not make an actively modified directory tree race-free. Do not let another process modify the installation directories during elevated install/uninstall.
+- Window/process matching and focus checks reduce accidental interaction with other windows. Sending Enter still depends on desktop focus; avoid switching windows while the watchdog attaches.
 - This is an **unofficial community project**, not affiliated with or endorsed by TH.GL. Check TH.GL's applicable terms before using it. Use at your own risk.
+
+## Development and offline tests
+
+No package installation is needed for the application. Isolated staging does not create scheduled tasks:
+
+```powershell
+powershell.exe -NoProfile -NonInteractive -File .\install.ps1 -StageOnly -InstallRoot "$env:TEMP\THGL-QA"
+powershell.exe -NoProfile -NonInteractive -File .\install.ps1 -StageOnly -Uninstall -InstallRoot "$env:TEMP\THGL-QA"
+```
+
+Live staging downloads CSS from `app.th.gl` and `static.th.gl`. It does not run the watchdog or verify Windows/WebView2 behavior. `-StageOnly` also runs on PowerShell 7 for filesystem testing.
+
+The offline installer suite needs Python 3 (standard library only) and a supplied PowerShell executable. HTTP responses and selected failures are synthetic; the real installer runs in temporary directories:
+
+```text
+python tests/test_install.py --pwsh powershell.exe
+```
+
+The watchdog suite uses inert Windows API replacements in a fresh PowerShell 7 process. It executes production function bodies without operating real windows or sending keys:
+
+```text
+pwsh -NoLogo -NoProfile -NonInteractive -File tests/Test-Watchdog.ps1
+```
+
+CI runs installer tests on Windows PowerShell 5.1 and PowerShell 7, and watchdog fixtures on PowerShell 7. Fixtures do not replace manual Windows acceptance: approve both Overrides folders, verify both views, delay/reopen DevTools, restart TH.GL, and check update/uninstall and scheduled-task recovery.
 
 <sub>License: [MIT](LICENSE) applies to this repository's original files only.</sub>
