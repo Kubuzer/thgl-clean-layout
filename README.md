@@ -128,7 +128,7 @@ This removes the project's scheduled task and generated local files. You can als
 
 Manual checks on that PC covered both Overrides folders, map operation and ad hiding, recovery after closing each DevTools separately, startup with a minimized dashboard, reboot autostart, and uninstall/reinstall. The two-second polling version was installed and the user confirmed faster startup; no precise end-to-end timing was measured.
 
-Those checks cover the earlier version that kept DevTools minimized. Automatic closing has inert regression coverage; its complete post-reload CSS confirmation still requires manual acceptance on the target PC.
+Those lifecycle checks cover the earlier version that kept DevTools minimized. Automatic closing was then checked on the same PC for both dashboard and overlay: the log confirmed the loaded CSS in each new document, both DevTools windows closed, and no repeated reloads followed during observation. The overlay needed one retry before confirmation. This does not establish compatibility on other PCs.
 
 ## Development and offline tests
 
