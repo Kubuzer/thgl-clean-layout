@@ -1,4 +1,4 @@
-# Opens TH.GL's own DevTools when necessary so WebView2 Local Overrides apply.
+# Applies Local Overrides, confirms the loaded CSS, then closes TH.GL DevTools.
 # Windows PowerShell 5.1; requires an interactive desktop session.
 #requires -Version 5.1
 param([switch]$Once)
@@ -121,7 +121,38 @@ function FindDevTools([string]$path) {
     }
     return $null
 }
-function OpenAndRefresh([string]$buttonName, [string]$path, $main) {
+function SendConsoleCommand($dev, [string]$command, $reloadState = $null) {
+    if (-not [ThglForeground]::SetForegroundWindow([IntPtr]$dev.Current.NativeWindowHandle)) {
+        throw 'DevTools did not receive foreground focus'
+    }
+    Start-Sleep -Milliseconds 150
+    $tab = FindControl $dev 'Console' ([System.Windows.Automation.ControlType]::TabItem)
+    if (-not $tab) { throw 'Console tab not found' }
+    $tab.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+    Start-Sleep -Milliseconds 180
+    $prompt = FindControl $dev 'Console prompt' ([System.Windows.Automation.ControlType]::Edit)
+    if (-not $prompt) { throw 'Console prompt not found' }
+    $prompt.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($command)
+    $prompt.SetFocus()
+    Start-Sleep -Milliseconds 150
+    if ([ThglForeground]::GetForegroundWindow() -ne [IntPtr]$dev.Current.NativeWindowHandle -or
+        -not [System.Windows.Automation.Automation]::Compare(
+            [System.Windows.Automation.AutomationElement]::FocusedElement, $prompt)) {
+        throw 'Console did not retain focus'
+    }
+    # Only the guarded dispatch can become ambiguous; setup failures remain retryable.
+    if ($reloadState) { $reloadState.ReloadRequested = $true }
+    [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+}
+function WaitConsoleText($dev, [string]$token) {
+    for ($i = 0; $i -lt 20; $i++) {
+        # Exact output text differs from the Console's quoted command echo.
+        if (FindControl $dev $token ([System.Windows.Automation.ControlType]::Text)) { return }
+        Start-Sleep -Milliseconds 300
+    }
+    throw 'Console confirmation not received; DevTools left open'
+}
+function OpenAndRefresh([string]$buttonName, [string]$path, $main, $state) {
     # A previous attempt may have opened DevTools before its Console was ready.
     $dev = FindDevTools $path
     if (-not $dev) {
@@ -157,47 +188,52 @@ function OpenAndRefresh([string]$buttonName, [string]$path, $main) {
     }
 
     $windowPattern = $dev.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern)
+    $devHandle = $dev.Current.NativeWindowHandle
+    $closed = $false
     try {
         $windowPattern.SetWindowVisualState([System.Windows.Automation.WindowVisualState]::Normal)
-        if (-not [ThglForeground]::SetForegroundWindow([IntPtr]$dev.Current.NativeWindowHandle)) {
-            throw 'DevTools did not receive foreground focus'
+        if (-not $state.ReloadRequested) {
+            $state.DocumentToken = [Guid]::NewGuid().ToString('N')
+            $armed = 'THGL_ARM_' + $state.DocumentToken
+            SendConsoleCommand $dev ("window.__thglCleanLayoutDocument='" + $state.DocumentToken + "';console.info('" + $armed + "')")
+            WaitConsoleText $dev $armed
+            SendConsoleCommand $dev 'location.reload()' $state
+            Log "Reload requested $path"
         }
-        Start-Sleep -Milliseconds 150
-        $tab = FindControl $dev 'Console' ([System.Windows.Automation.ControlType]::TabItem)
-        if (-not $tab) { throw 'Console tab not found' }
-        $tab.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-        Start-Sleep -Milliseconds 180
-        $prompt = FindControl $dev 'Console prompt' ([System.Windows.Automation.ControlType]::Edit)
-        if (-not $prompt) { throw 'Console prompt not found' }
-        $prompt.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('location.reload()')
-        $prompt.SetFocus()
-        Start-Sleep -Milliseconds 150
-        if ([ThglForeground]::GetForegroundWindow() -ne [IntPtr]$dev.Current.NativeWindowHandle -or
-            -not [System.Windows.Automation.Automation]::Compare(
-                [System.Windows.Automation.AutomationElement]::FocusedElement, $prompt)) {
-            throw 'Console did not retain focus'
+        $ack = 'THGL_CSS_' + [Guid]::NewGuid().ToString('N')
+        $probe = "(()=>{let n=0;const t=setInterval(()=>{if(document.readyState==='complete'&&window.__thglCleanLayoutDocument!=='" +
+            $state.DocumentToken + "'&&getComputedStyle(document.documentElement).getPropertyValue('--thgl-clean-layout').trim()==='1'){clearInterval(t);console.info('" +
+            $ack + "');}else if(++n>=50){clearInterval(t);}},100);})()"
+        SendConsoleCommand $dev $probe
+        WaitConsoleText $dev $ack
+        $state.CssConfirmed = $true
+        $windowPattern.Close()
+        for ($i = 0; $i -lt 20; $i++) {
+            $remaining = @((Windows) | Where-Object { $_.Current.NativeWindowHandle -eq $devHandle })
+            if ($remaining.Count -eq 0) { $closed = $true; break }
+            Start-Sleep -Milliseconds 100
         }
-        [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
-        Log "Refreshed $path"
+        if (-not $closed) { throw 'DevTools did not close' }
+        Log "CSS confirmed; closed DevTools $path"
     } finally {
-        try { $windowPattern.SetWindowVisualState([System.Windows.Automation.WindowVisualState]::Minimized) }
-        catch { Log "Could not minimize $($path): $($_.Exception.Message)" }
+        if (-not $closed) {
+            try { $windowPattern.SetWindowVisualState([System.Windows.Automation.WindowVisualState]::Minimized) }
+            catch { Log "Could not minimize $($path): $($_.Exception.Message)" }
+        }
     }
-    return $dev.Current.NativeWindowHandle
 }
-function EnsureView([string]$buttonName, [string]$path, $main) {
+function EnsureView([string]$buttonName, [string]$path, $main, [long]$viewHandle) {
     $dev = FindDevTools $path
     $state = $refreshStates[$path]
-    # Preserve already-open windows on startup; retry only work this watchdog began.
-    if ($dev -and -not $state) { return }
-    if ($state -and $state.Ready -and $dev -and $state.Handle -eq $dev.Current.NativeWindowHandle) { return }
-    if (-not $state -or $state.Ready) {
-        $state = @{Ready=$false; Handle=0; Failures=0; NextAttempt=[DateTime]::MinValue}
+    if (-not $state -or $state.ViewHandle -ne $viewHandle) {
+        $state = @{Ready=$false; ViewHandle=$viewHandle; ReloadRequested=$false; CssConfirmed=$false; DocumentToken=$null; Failures=0; NextAttempt=[DateTime]::MinValue}
         $refreshStates[$path] = $state
     }
+    # Reconcile an intentional close, including a close whose acknowledgement failed.
+    if ($state.CssConfirmed -and -not $dev) { $state.Ready = $true; return }
     if ((Get-Date) -lt $state.NextAttempt) { return }
     try {
-        $state.Handle = OpenAndRefresh $buttonName $path $main
+        OpenAndRefresh $buttonName $path $main $state
         $state.Ready = $true
         $state.Failures = 0
     } catch {
@@ -225,19 +261,19 @@ function Tick {
     }
     $script:appProcessIds = GetAppProcessIds $app
 
-    $overlayPresent = $false
+    $overlay = $null
     foreach ($window in (Windows)) {
         $name = $window.Current.Name
         if ($name -like '*AION 2 Interactive Map - The Hidden Gaming Lair*' -or
             $name -eq 'THGL Overlay') {
-            $overlayPresent = $true
+            $overlay = $window
             break
         }
     }
     $main = @((Windows) | Where-Object { $_.Current.ProcessId -eq $app.Id -and $_.Current.Name -eq 'The Hidden Gaming Lair' })
     if ($main.Count -ne 1) { return }
-    EnsureView 'dashboard' 'dashboard' $main[0]
-    if ($overlayPresent) { EnsureView 'aion2 (overlay)' 'apps/aion2/overlay' $main[0] }
+    EnsureView 'dashboard' 'dashboard' $main[0] $main[0].Current.NativeWindowHandle
+    if ($overlay) { EnsureView 'aion2 (overlay)' 'apps/aion2/overlay' $main[0] $overlay.Current.NativeWindowHandle }
 }
 
 try {

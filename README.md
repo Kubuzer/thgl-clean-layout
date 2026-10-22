@@ -27,7 +27,7 @@ Hides the dashboard advertising sidebar and the bottom-right ad panel on the **A
 
 No EXE patching, DNS blocking, browser extensions, game-memory access, or additional software installations. The tool uses **Microsoft Edge WebView2 DevTools Local Overrides** and a Windows scheduled task.
 
-**Why PowerShell?** Windows PowerShell installs the local CSS override and creates the scheduled task that reopens/minimizes DevTools after TH.GL starts. All source code is readable in this repository; review it before running anything as administrator. No game files are patched.
+**Why PowerShell?** Windows PowerShell installs the local CSS override and creates the scheduled task that opens DevTools, confirms the loaded CSS, and closes DevTools. All source code is readable in this repository; review it before running anything as administrator. No game files are patched.
 
 ## Quick start
 
@@ -57,7 +57,7 @@ Open **TH.GL > Settings > Developer Tools > dashboard**, then:
 
 **4.** Start AION 2. Back in **TH.GL > Settings > Developer Tools**, open **aion2 (overlay)** DevTools. Repeat step 3 there, selecting **exactly the same `Documents\THGL-Clean-Layout` folder**. The dashboard and overlay are separate DevTools windows, so both require one-time folder access.
 
-**5.** Refresh the dashboard and map once. On later launches, the Windows task reopens/minimizes DevTools automatically. Ads may remain visible briefly until the watchdog attaches and the CSS takes effect. You do **not** need to upload, paste, or move the files in the `Overrides` panel.
+**5.** The task reloads each view, waits for confirmation that the local CSS is loaded in the new document, then closes its DevTools window. This includes DevTools you opened manually. Until confirmation succeeds, DevTools stays open and is minimized between retries. Ads may remain visible briefly until the CSS takes effect. You do **not** need to upload, paste, or move files in the `Overrides` panel.
 
 > [!NOTE]
 > Approving the Local Overrides folder in **both** DevTools windows is a one-time manual WebView2 permission step. The installer cannot approve it for you.
@@ -75,17 +75,20 @@ flowchart LR
     B --> C[Open DevTools]
     C --> D[Apply local CSS]
     D --> E[Hide two ad containers]
+    E --> F[Confirm CSS and close DevTools]
 ```
 
 | File | Purpose |
 |:--|:--|
 | `install.ps1` | Downloads a current TH.GL stylesheet to a local overrides folder, appends the ad-hiding CSS, and configures autostart. |
-| `watchdog.ps1` | Detects TH.GL windows, opens DevTools when needed, refreshes the views, and minimizes DevTools. |
-| `clean-layout.css` | Two targeted CSS rules that hide the dashboard and AION 2 map ad containers. |
+| `watchdog.ps1` | Detects TH.GL views, reloads them with Overrides enabled, confirms the loaded CSS, and closes DevTools. |
+| `clean-layout.css` | Two targeted ad-hiding rules and a harmless custom property used to confirm stylesheet readiness. |
 
 The upstream CSS is downloaded **to your computer**; this repository does not redistribute TH.GL assets. The watchdog waits 2 seconds between checks, reducing the delay before it detects a new overlay. Window inspection, DevTools startup, and loading the stylesheet add their own time, so ads can still be visible briefly. Its script is installed in the administrator-protected `Program Files\THGL-Clean-Layout` directory because the scheduled task may need elevated privileges.
 
-The watchdog matches windows to TH.GL and its child processes in the current Windows session. If DevTools opens before Console is ready, it retries the unfinished refresh with a delay of 7–60 seconds. Completed refreshes are not repeated on every poll. Dashboard and overlay retries are independent. Logs rotate on startup and at approximately 2 MiB, retaining one previous log. Each session creates its own log file rather than appending through an existing filesystem link.
+The watchdog matches windows to TH.GL and its child processes in the current Windows session. Before reloading a view, it marks the old document and confirms the Console executed that command. It closes DevTools only after a unique Console result confirms a different, fully loaded document with the CSS readiness property. Missing confirmation leaves DevTools minimized for a retry after 7–60 seconds. A reload whose dispatch is uncertain is not sent again automatically; restart TH.GL if it cannot recover.
+
+Completed work is remembered by the dashboard or overlay window handle, so intentionally closed DevTools are not reopened on every poll. Hiding and showing the same overlay keeps that state; a new view handle or app restart requires fresh confirmation. Dashboard and overlay retries are independent. Logs rotate on startup and at approximately 2 MiB, retaining one previous log.
 
 ## Safe updates and recovery
 
@@ -117,12 +120,15 @@ This removes the project's scheduled task and generated local files. You can als
 - **Windows only.** Manually checked on one Windows 11 PC with TH.GL Companion **22.27.0 and 22.28.0**. Other PCs and versions are not validated.
 - **Visual hiding, not ad blocking.** Advertising requests can still be sent; the tool only changes how the two ad containers are displayed.
 - TH.GL updates may change CSS filenames, DOM elements, or Developer Tools controls. Rerun the installer if a CSS filename changes; selectors may also need updating.
-- DevTools must remain open (minimized is fine). The watchdog requires an unlocked interactive Windows session and may briefly reload the map when it attaches.
+- DevTools closes after CSS confirmation. The already loaded document keeps its styling, but a later reload or navigation in the same view may lose Overrides while DevTools is closed. The watchdog cannot detect that navigation without DevTools; restart TH.GL to reapply. A new view window is handled automatically.
+- The watchdog requires an unlocked interactive Windows session and reloads each new view once, including the map. If confirmation fails, DevTools stays open and minimized. Closing is based on confirmation, never a fixed startup delay.
 - The installer still requires administrator privileges. Path checks reject existing reparse points; they do not make an actively modified directory tree race-free. Do not let another process modify the installation directories during elevated install/uninstall.
 - Window/process matching and focus checks reduce accidental interaction with other windows. Sending Enter still depends on desktop focus; avoid switching windows while the watchdog attaches.
 - This is an **unofficial community project**, not affiliated with or endorsed by TH.GL. Check TH.GL's applicable terms before using it. Use at your own risk.
 
 Manual checks on that PC covered both Overrides folders, map operation and ad hiding, recovery after closing each DevTools separately, startup with a minimized dashboard, reboot autostart, and uninstall/reinstall. The two-second polling version was installed and the user confirmed faster startup; no precise end-to-end timing was measured.
+
+Those checks cover the earlier version that kept DevTools minimized. Automatic closing has inert regression coverage; its complete post-reload CSS confirmation still requires manual acceptance on the target PC.
 
 ## Development and offline tests
 

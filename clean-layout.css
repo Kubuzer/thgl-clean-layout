@@ -1,3 +1,6 @@
+/* Readiness marker: closing DevTools requires this stylesheet in the new document. */
+:root { --thgl-clean-layout: 1; }
+
 /* Dashboard: reclaim the 360px advertisement sidebar. */
 div[class~="w-[360px]"]:has(#thgl-dashboard) { display: none !important; }
 

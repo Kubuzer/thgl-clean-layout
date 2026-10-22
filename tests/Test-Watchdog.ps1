@@ -6,7 +6,7 @@ Add-Type -TypeDefinition @'
 using System;
 namespace THGLTest.Automation {
   public static class ControlType {
-    public static readonly object Button = "Button", Hyperlink = "Hyperlink", TabItem = "TabItem", Edit = "Edit";
+    public static readonly object Button = "Button", Hyperlink = "Hyperlink", TabItem = "TabItem", Edit = "Edit", Text = "Text";
   }
   public static class InvokePattern { public static readonly object Pattern = "Invoke"; }
   public static class WindowPattern { public static readonly object Pattern = "Window"; }
@@ -16,8 +16,12 @@ namespace THGLTest.Automation {
   public enum TreeScope { Children, Descendants }
   public static class Condition { public static readonly object TrueCondition = new object(); }
   public static class AutomationElement {
-    public static object RootElement, FocusedElement;
+    public static object RootElement, FocusedElement, NameProperty;
     public static object FromHandle(IntPtr h) { return new object(); }
+  }
+  public class PropertyCondition {
+    public string Name;
+    public PropertyCondition(object property, string name) { Name = name; }
   }
   public static class Automation {
     public static bool Compare(object a, object b) { return object.ReferenceEquals(a,b); }
@@ -26,7 +30,8 @@ namespace THGLTest.Automation {
 namespace THGLTest.Forms {
   public static class SendKeys {
     public static int Calls;
-    public static void SendWait(string value) { Calls++; }
+    public static Action OnSend;
+    public static void SendWait(string value) { Calls++; if (OnSend != null) OnSend(); }
   }
 }
 public static class ThglForeground {
@@ -45,11 +50,12 @@ if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
 $definitions = $ast.FindAll({param($node)
     $node -is [System.Management.Automation.Language.FunctionDefinitionAst]
 }, $true)
-foreach ($name in @('LogRetry', 'GetAppProcessIds', 'Windows', 'FindDevTools', 'OpenAndRefresh', 'EnsureView', 'Tick')) {
+foreach ($name in @('LogRetry', 'GetAppProcessIds', 'Windows', 'FindDevTools', 'SendConsoleCommand', 'WaitConsoleText', 'OpenAndRefresh', 'EnsureView', 'Tick')) {
     $definition = $definitions | Where-Object Name -eq $name
     $body = $definition.Extent.Text.Replace('[System.Windows.Automation.', '[THGLTest.Automation.').Replace('[System.Windows.Forms.', '[THGLTest.Forms.')
     . ([scriptblock]::Create($body))
 }
+$realFindControl = [scriptblock]::Create('param($parent, [string]$name, $kind)' + ($definitions | Where-Object Name -eq 'FindControl').Body.Extent.Text.Trim('{}').Replace('System.Windows.Automation.', 'THGLTest.Automation.'))
 $checks = 0
 function Assert($condition, [string]$message) {
     if (-not $condition) { throw $message }
@@ -65,6 +71,12 @@ function ResetFixture {
     $script:hasApp = $true; $script:failDashboard = $false
     $script:keepPromptFocus = $true
     $script:mainRestores = 0
+    $script:closeCount = 0; $script:reloadCounts = @{}
+    $script:documentTokens = @{}; $script:outputs = @{}
+    $script:cssLoaded = $true; $script:reloadCompletes = $true; $script:documentComplete = $true
+    $script:echoOnly = $false; $script:closeWorks = $true
+    $script:failReloadFocus = $false
+    $script:commandPath = $null; $script:nextHandle = 100
     $script:app = [pscustomobject]@{
         Id=123; MainWindowHandle=[IntPtr]42; StartTime=[DateTime]'2026-01-01'
         SessionId=[Diagnostics.Process]::GetCurrentProcess().SessionId
@@ -77,15 +89,26 @@ function ResetFixture {
 }
 function NewWindow([string]$path, [int]$processId=222, [string]$title='') {
     if (-not $title) { $title = 'DevTools - app.th.gl/' + $path }
-    $window = [pscustomobject]@{Path=$path; Current=[pscustomobject]@{
-        Name=$title; ProcessId=$processId; NativeWindowHandle=(42 + $script:windows.Count)
+    $window = [pscustomobject]@{Path=$path; Closed=$false; Snapshot=[pscustomobject]@{
+        Name=$title; ProcessId=$processId; NativeWindowHandle=($script:nextHandle++)
     }}
+    $window | Add-Member ScriptProperty Current {
+        if ($this.Closed) { throw 'Stale Current access after Close' }
+        return $this.Snapshot
+    }
     $window | Add-Member ScriptMethod GetCurrentPattern {
         param($pattern)
-        $result = [pscustomobject]@{Path=$this.Path}
+        $result = [pscustomobject]@{Path=$this.Path; Window=$this}
         $result | Add-Member ScriptMethod SetWindowVisualState {
             param($state)
             if ($this.Path -eq 'main') { $script:mainRestores++ }
+        }
+        $result | Add-Member ScriptMethod Close {
+            $script:closeCount++
+            if ($script:closeWorks) {
+                $script:windows.Remove($this.Window) | Out-Null
+                $this.Window.Closed = $true
+            }
         }
         return $result
     }
@@ -111,6 +134,16 @@ function Get-CimInstance {
 }
 function FindControl {
     param($parent, [string]$name, $kind)
+    if ($kind -eq [THGLTest.Automation.ControlType]::Text) {
+        $outputParent = [pscustomobject]@{Path=$parent.Path}
+        $outputParent | Add-Member ScriptMethod FindAll {
+            param($scope,$condition)
+            foreach ($text in @($script:outputs[$this.Path])) {
+                if ($text -eq $condition.Name) { [pscustomobject]@{Current=[pscustomobject]@{Name=$text; ControlType=[THGLTest.Automation.ControlType]::Text}} }
+            }
+        }
+        return (& $script:realFindControl $outputParent $name $kind)
+    }
     if ($name -in @('dashboard', 'aion2 (overlay)')) {
         if ($parent.Current.Name -ne 'The Hidden Gaming Lair' -or $parent.Current.ProcessId -ne $app.Id) { return $null }
         if ($name -eq 'dashboard' -and $script:failDashboard) { return $null }
@@ -134,14 +167,36 @@ function FindControl {
     if ($name -eq 'Console prompt') {
         $prompt = [pscustomobject]@{Path=$parent.Path}
         $prompt | Add-Member ScriptMethod GetCurrentPattern {param($pattern); return $this}
-        $prompt | Add-Member ScriptMethod SetValue {param($value); $script:typed[$this.Path] = $value}
+        $prompt | Add-Member ScriptMethod SetValue {param($value); $script:typed[$this.Path] = $value; $script:commandPath = $this.Path}
         $prompt | Add-Member ScriptMethod SetFocus {
-            [THGLTest.Automation.AutomationElement]::FocusedElement = if ($script:keepPromptFocus) { $this } else { [pscustomobject]@{} }
+            [THGLTest.Automation.AutomationElement]::FocusedElement = if ($script:keepPromptFocus -and
+                -not ($script:failReloadFocus -and $script:typed[$this.Path] -eq 'location.reload()')) { $this } else { [pscustomobject]@{} }
         }
         return $prompt
     }
     throw "Unexpected lookup: $name"
 }
+function InvokeFixtureCommand {
+    $path = $script:commandPath
+    $command = $script:typed[$path]
+    if ($command -match "^window\.__thglCleanLayoutDocument='([a-f0-9]+)';console\.info\('(THGL_ARM_[a-f0-9]+)'\)$") {
+        $script:documentTokens[$path] = $Matches[1]
+        $script:outputs[$path] = @($(if ($script:echoOnly) { "'" + $Matches[2] + "'" } else { $Matches[2] }))
+    } elseif ($command -eq 'location.reload()') {
+        $script:reloadCounts[$path] = 1 + $script:reloadCounts[$path]
+        if ($script:reloadCompletes) { $script:documentTokens.Remove($path); $script:outputs.Remove($path) }
+    } elseif ($command -match "console\.info\('(THGL_CSS_[a-f0-9]+)'\)") {
+        $token = $Matches[1]
+        # Inert browser simulation: production command must contain every proof guard.
+        if ($command -notmatch "document\.readyState==='complete'" -or
+            $command -notmatch "window\.__thglCleanLayoutDocument!==('[a-f0-9]+')" -or
+            $command -notmatch "getPropertyValue\('--thgl-clean-layout'\)\.trim\(\)==='1'") { throw 'Missing CSS/new-document proof guard' }
+        if ($script:cssLoaded -and $script:documentComplete -and -not $script:documentTokens.ContainsKey($path)) {
+            $script:outputs[$path] = @($(if ($script:echoOnly) { "'" + $token + "'" } else { $token }))
+        }
+    } else { throw "Unexpected fixture Console command: $command" }
+}
+[THGLTest.Forms.SendKeys]::OnSend = { InvokeFixtureCommand }
 $rootElement = [pscustomobject]@{}
 $rootElement | Add-Member ScriptMethod FindAll {param($scope,$condition); return $script:windows.ToArray()}
 [THGLTest.Automation.AutomationElement]::RootElement = $rootElement
@@ -157,9 +212,9 @@ $ready['dashboard'] = $true
 $refreshStates['dashboard'].NextAttempt = [DateTime]::MinValue
 Tick
 Assert ($refreshStates['dashboard'].Ready) 'Refresh did not recover on the already-open window'
-Assert ($invokeCount -eq 1 -and [THGLTest.Forms.SendKeys]::Calls -eq 1) 'Recovery reopened a window or missed the key'
+Assert ($invokeCount -eq 1 -and $reloadCounts['dashboard'] -eq 1 -and $closeCount -eq 1) 'Recovery reopened a window, missed reload, or did not close'
 Tick
-Assert ([THGLTest.Forms.SendKeys]::Calls -eq 1) 'Completed refresh repeated'
+Assert ($reloadCounts['dashboard'] -eq 1 -and $invokeCount -eq 1) 'Intentionally closed view reopened'
 
 # 2. Restrict both process ancestry and the title path boundary.
 ResetFixture
@@ -197,11 +252,12 @@ foreach ($title in @(
     Assert ($null -eq (FindDevTools 'apps/aion2/overlay')) "Unexpected overlay route accepted: $title"
 }
 
-# 3. Starting the watchdog must preserve an already-open view.
+# 3. Explicit auto-close includes an already-open DevTools window.
 ResetFixture
+$ready['dashboard'] = $true
 $windows.Add((NewWindow 'dashboard' 222 'DevTools - app.th.gl/dashboard/games/aion2'))
 Tick
-Assert ($invokeCount -eq 0 -and [THGLTest.Forms.SendKeys]::Calls -eq 0) 'Existing user window was reloaded on startup'
+Assert ($invokeCount -eq 0 -and $reloadCounts['dashboard'] -eq 1 -and $closeCount -eq 1) 'Existing DevTools was reopened or not processed'
 Assert ($appIdentity.StartsWith('123:')) 'Another session was selected'
 Assert ($mainRestores -eq 0) 'Dashboard was restored despite existing DevTools'
 
@@ -251,6 +307,76 @@ $windows.Add((NewWindow 'main' 999 'The Hidden Gaming Lair'))
 Tick
 Assert ($invokeCount -eq 0 -and [THGLTest.Forms.SendKeys]::Calls -eq 0) 'Controller or foreign dashboard was used'
 
+# CSS acknowledgement is required; the first reload is not replayed on retry.
+ResetFixture
+$ready['dashboard'] = $true
+$cssLoaded = $false
+Tick
+Assert (-not $refreshStates['dashboard'].Ready -and $closeCount -eq 0) 'Missing CSS acknowledgement closed DevTools'
+$cssLoaded = $true
+$refreshStates['dashboard'].NextAttempt = [DateTime]::MinValue
+Tick
+Assert ($refreshStates['dashboard'].Ready -and $reloadCounts['dashboard'] -eq 1 -and $closeCount -eq 1) 'CSS readiness retry repeated reload or failed to close'
+
+# A setup/focus failure before reload dispatch must remain recoverable.
+ResetFixture
+$ready['dashboard'] = $true
+$failReloadFocus = $true
+Tick
+Assert (-not $refreshStates['dashboard'].ReloadRequested -and -not $reloadCounts['dashboard']) 'Reload was recorded before guarded dispatch'
+$failReloadFocus = $false
+$refreshStates['dashboard'].NextAttempt = [DateTime]::MinValue
+Tick
+Assert ($refreshStates['dashboard'].Ready -and $reloadCounts['dashboard'] -eq 1) 'Reload setup failure could not recover'
+
+# The old document, incomplete loading, and quoted command echoes cannot prove readiness.
+foreach ($failure in @('old-document', 'loading', 'echo')) {
+    ResetFixture
+    $ready['dashboard'] = $true
+    if ($failure -eq 'old-document') { $reloadCompletes = $false }
+    if ($failure -eq 'loading') { $documentComplete = $false }
+    if ($failure -eq 'echo') { $echoOnly = $true }
+    Tick
+    Assert (-not $refreshStates['dashboard'].Ready -and $closeCount -eq 0) "Unproven readiness accepted: $failure"
+}
+
+# A close that did not remove the actual window is not reported complete.
+ResetFixture
+$ready['dashboard'] = $true
+$closeWorks = $false
+Tick
+Assert (-not $refreshStates['dashboard'].Ready -and $closeCount -eq 1) 'Failed close was marked complete'
+$windows.Remove((FindDevTools 'dashboard')) | Out-Null
+Tick
+Assert ($refreshStates['dashboard'].Ready -and $invokeCount -eq 1) 'Ambiguous close was replayed instead of reconciled'
+
+# Completed state belongs to the view HWND, not the temporary DevTools HWND.
+ResetFixture
+$ready['dashboard'] = $true
+$overlay = NewWindow 'overlay' 222 'THGL Overlay'
+$windows.Add($overlay)
+Tick
+Assert ($refreshStates['apps/aion2/overlay'].Ready -and $closeCount -eq 2) 'Both views were not closed after confirmation'
+Tick
+Assert ($invokeCount -eq 2) 'Closed overlay DevTools reopened every tick'
+$windows.Remove($overlay) | Out-Null
+$overlay = NewWindow 'overlay' 222 'THGL Overlay'
+$windows.Add($overlay)
+Tick
+Assert ($reloadCounts['apps/aion2/overlay'] -eq 2 -and $reloadCounts['dashboard'] -eq 1) 'Recreated overlay did not invalidate only its own completed state'
+$windows.Remove($overlay) | Out-Null
+Tick
+Assert ($refreshStates.ContainsKey('apps/aion2/overlay')) 'Hidden overlay lost completed state'
+$windows.Add($overlay)
+Tick
+Assert ($reloadCounts['apps/aion2/overlay'] -eq 2) 'Same overlay HWND reloaded after hide/show'
+$main.Current.NativeWindowHandle++
+Tick
+Assert ($reloadCounts['dashboard'] -eq 2) 'Recreated dashboard retained completed state'
+$app.StartTime = $app.StartTime.AddMinutes(1)
+Tick
+Assert ($reloadCounts['dashboard'] -eq 3) 'App restart retained intentional-close state'
+
 # 7. Distinct errors cannot grow the retry log dictionary without bound.
 ResetFixture
 for ($index=0; $index -lt 140; $index++) { LogRetry "fixture error $index" }
@@ -289,4 +415,4 @@ try {
     if ($logStream) { $logStream.Dispose(); $script:logStream = $null }
     Remove-Item -LiteralPath $rootPath -Recurse -Force
 }
-Write-Host "$checks assertions passed in 9 watchdog scenarios (inert Windows APIs)."
+Write-Host "$checks assertions passed (inert Windows APIs; no real browser execution)."
