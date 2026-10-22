@@ -9,7 +9,7 @@ Hides the dashboard advertising sidebar and the bottom-right ad panel on the **A
 <p>
   <img src="https://img.shields.io/badge/Platform-Windows-334155?style=flat-square" alt="Windows" />
   <img src="https://img.shields.io/badge/PowerShell-5.1-334155?style=flat-square" alt="PowerShell 5.1" />
-  <img src="https://img.shields.io/badge/Tested-TH.GL%2022.20.0-155e63?style=flat-square" alt="Tested with TH.GL 22.20.0" />
+  <img src="https://img.shields.io/badge/Tested-TH.GL%2022.28.0-155e63?style=flat-square" alt="Tested with TH.GL 22.28.0" />
   <img src="https://img.shields.io/badge/License-MIT-155e63?style=flat-square" alt="MIT license" />
 </p>
 
@@ -31,7 +31,7 @@ No EXE patching, DNS blocking, browser extensions, game-memory access, or additi
 
 ## Quick start
 
-**1.** [Download ZIP](../../archive/refs/heads/main.zip), extract it, and review the scripts.
+**1.** [Download ZIP](https://github.com/Kubuzer/thgl-clean-layout/archive/refs/heads/main.zip), extract it, and review the scripts. If another script already manages TH.GL DevTools, stop it and disable its autostart first; preserve its files before replacing it.
 
 **2.** Open **Windows PowerShell 5.1 as Administrator** in the extracted folder and run:
 
@@ -65,7 +65,7 @@ Open **TH.GL > Settings > Developer Tools > dashboard**, then:
 > [!TIP]
 > **Can't find Overrides?** In **Sources**, use the **left-side More tabs** arrow next to **Page / Workspace**, not the DevTools three-dot menu at the top-right. Widen DevTools if necessary. [Microsoft Edge DevTools guidance](https://learn.microsoft.com/en-us/microsoft-edge/devtools/sources/).
 >
-> **Already see a folder and checked "Local overrides"?** That window is already connected; don't try to add individual files. Verify that it points to the **folder created by this installer**. The folder shown in personal setups may have a different name (for example, `THGL-Overrides` instead of this project's default `THGL-Clean-Layout`).
+> **Already see a folder and checked "Local overrides"?** Verify that it points to the folder printed by this installer. If it points elsewhere, use **Clear configuration**, select the correct folder, and approve access again. Do not add individual files.
 
 ## How ad hiding works
 
@@ -98,6 +98,10 @@ The watchdog matches windows to TH.GL and its child processes in the current Win
 
 Use a normal filesystem directory for Local Overrides. Redirected Documents paths are supported when their filesystem path contains no symbolic links or junctions. Do not bypass a rejected path by running an altered elevated script.
 
+To update, extract the latest source into a separate folder and run `install.ps1` again in Administrator Windows PowerShell 5.1. Keep the existing Overrides folder selected in both DevTools windows. The installer updates the managed files and restarts the task; folder access does not need to be approved again unless the selection changes.
+
+If TH.GL restarts with different privileges and the watchdog stops recognizing its DevTools, fully quit TH.GL from the system tray and close both DevTools windows, then start TH.GL again. A WebView2 process from the previous app instance can otherwise survive outside the new instance's process tree.
+
 ## Uninstall
 
 Run this from the extracted repository in **Administrator PowerShell**:
@@ -110,13 +114,15 @@ This removes the project's scheduled task and generated local files. You can als
 
 ## Compatibility and limitations
 
-- **Windows only.** Tested on one PC with TH.GL Companion **22.20.0**; not yet validated on other PCs or versions.
+- **Windows only.** Manually checked on one Windows 11 PC with TH.GL Companion **22.27.0 and 22.28.0**. Other PCs and versions are not validated.
 - **Visual hiding, not ad blocking.** Advertising requests can still be sent; the tool only changes how the two ad containers are displayed.
 - TH.GL updates may change CSS filenames, DOM elements, or Developer Tools controls. Rerun the installer if a CSS filename changes; selectors may also need updating.
 - DevTools must remain open (minimized is fine). The watchdog requires an unlocked interactive Windows session and may briefly reload the map when it attaches.
 - The installer still requires administrator privileges. Path checks reject existing reparse points; they do not make an actively modified directory tree race-free. Do not let another process modify the installation directories during elevated install/uninstall.
 - Window/process matching and focus checks reduce accidental interaction with other windows. Sending Enter still depends on desktop focus; avoid switching windows while the watchdog attaches.
 - This is an **unofficial community project**, not affiliated with or endorsed by TH.GL. Check TH.GL's applicable terms before using it. Use at your own risk.
+
+Manual checks on that PC covered both Overrides folders, map operation and ad hiding, recovery after closing each DevTools separately, startup with a minimized dashboard, reboot autostart, and uninstall/reinstall. The two-second polling version was installed and the user confirmed faster startup; no precise end-to-end timing was measured.
 
 ## Development and offline tests
 
@@ -129,7 +135,7 @@ powershell.exe -NoProfile -NonInteractive -File .\install.ps1 -StageOnly -Uninst
 
 Live staging downloads CSS from `app.th.gl` and `static.th.gl`. It does not run the watchdog or verify Windows/WebView2 behavior. `-StageOnly` also runs on PowerShell 7 for filesystem testing.
 
-The offline installer suite needs Python 3 (standard library only) and a supplied PowerShell executable. HTTP responses and selected failures are synthetic; the real installer runs in temporary directories:
+The offline installer suite needs Python 3 (standard library only) and a supplied PowerShell executable. HTTP responses and selected failures are synthetic; the real installer runs in temporary directories. Run the command below from Windows PowerShell 5.1 so its child processes inherit the correct Windows PowerShell module paths:
 
 ```text
 python tests/test_install.py --pwsh powershell.exe
