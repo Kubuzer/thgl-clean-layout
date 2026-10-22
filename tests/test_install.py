@@ -25,7 +25,7 @@ class InstallTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='thgl-tests-')
         self.addCleanup(self.temp.cleanup)
-        self.base = Path(self.temp.name)
+        self.base = Path(self.temp.name).resolve()
         self.root = self.base / 'override folder'
 
     def invoke(self, *, uninstall=False, phase='1', response='', fail_write=False,
@@ -38,7 +38,7 @@ class InstallTests(unittest.TestCase):
                            THGL_TEST_FAIL_DELETE='1' if fail_delete else '0')
         result = subprocess.run([options.pwsh, '-NoLogo', '-NoProfile', '-NonInteractive',
                                  '-File', str(REPO / 'tests/fixtures/install.ps1')],
-                                env=environment, cwd=REPO, text=True, capture_output=True, timeout=45)
+                                env=environment, cwd=self.base, text=True, capture_output=True, timeout=45)
         output = result.stdout + result.stderr
         if success:
             self.assertEqual(result.returncode, 0, output)
@@ -81,7 +81,7 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(sentinel.read_text(), 'preserve')
 
     def test_relative_root_and_trailing_separator(self):
-        self.invoke(root=os.path.relpath(self.root, REPO) + os.sep)
+        self.invoke(root=os.path.relpath(self.root, self.base) + os.sep)
         self.assertTrue(Path(self.manifest()['overrideFile']).is_absolute())
         self.invoke(uninstall=True)
         self.assertFalse(self.root.exists())
