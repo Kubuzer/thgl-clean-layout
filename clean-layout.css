@@ -1,8 +1,9 @@
 /* Readiness marker: closing DevTools requires this stylesheet in the new document. */
-:root { --thgl-clean-layout: 1; }
+:root { --thgl-clean-layout: 2; }
 
 /* Dashboard: reclaim the 360px advertisement sidebar. */
 div[class~="w-[360px]"]:has(#thgl-dashboard) { display: none !important; }
 
-/* AION 2 map: hide the bottom-right ad overlay, not the map. */
-div.fixed:has(#thgl-aion2-overlay-overlay-small) { display: none !important; }
+/* Shared TH.GL game overlays: hide only the small/large advertisement container. */
+div.fixed:has([id^="thgl-"][id$="-overlay-overlay-small"]),
+div.fixed:has([id^="thgl-"][id$="-overlay-overlay-large"]) { display: none !important; }

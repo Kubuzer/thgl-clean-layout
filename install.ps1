@@ -203,19 +203,13 @@ if (-not $Uninstall) {
     foreach ($file in @($watchdogSource, $cssSource)) {
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing repository file: $file" }
     }
-    $pages = @('https://app.th.gl/dashboard', 'https://app.th.gl/apps/aion2/overlay')
+    $page = 'https://app.th.gl/dashboard'
     $pattern = 'https://static\.th\.gl/_next/static/chunks/[A-Za-z0-9_-]+\.css'
-    $sets = @()
-    foreach ($page in $pages) {
-        $html = (Invoke-WebRequest -Uri $page -UseBasicParsing -TimeoutSec 25 -MaximumRedirection 0).Content
-        $links = @([regex]::Matches($html, $pattern) | ForEach-Object { $_.Value } | Select-Object -Unique)
-        if ($links.Count -eq 0) { throw "No stylesheet links found at $page. TH.GL may have changed." }
-        $sets += ,$links
-    }
-    $common = @($sets[0] | Where-Object { $sets[1] -contains $_ })
-    if ($common.Count -eq 0 -or $common.Count -gt 32) { throw 'Unexpected number of shared stylesheets.' }
+    $html = (Invoke-WebRequest -Uri $page -UseBasicParsing -TimeoutSec 25 -MaximumRedirection 0).Content
+    $links = @([regex]::Matches($html, $pattern) | ForEach-Object { $_.Value } | Select-Object -Unique)
+    if ($links.Count -eq 0 -or $links.Count -gt 32) { throw 'Unexpected number of dashboard stylesheets.' }
     $bestUrl = $null; $bestContent = $null
-    foreach ($url in $common) {
+    foreach ($url in $links) {
         $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 25 -MaximumRedirection 0
         $contentType = [string]$response.Headers['Content-Type']
         $content = $response.Content
@@ -278,7 +272,7 @@ try {
             $registration = @{
                 TaskName=$taskName; TaskPath='\'; Action=$action; Trigger=$trigger
                 Principal=$principal; Settings=$settings; Force=$true; ErrorAction='Stop'
-                Description='Keep TH.GL dashboard and AION 2 overlay CSS Local Overrides active.'
+                Description='Apply CSS Local Overrides to the TH.GL dashboard and active game overlay.'
             }
             Register-ScheduledTask @registration | Out-Null
             Start-ScheduledTask -TaskName $taskName -TaskPath '\' -ErrorAction Stop
@@ -336,6 +330,7 @@ if ($StageOnly) { Write-Host 'Stage-only test completed. No scheduled task creat
 else {
     Write-Host 'Open TH.GL > Settings > Developer Tools > dashboard.'
     Write-Host 'Sources > Overrides > Select folder for overrides > select the folder above > Allow.'
-    Write-Host 'Then repeat for aion2 (overlay), using the SAME folder. Keep Local overrides enabled.'
+    Write-Host 'Then verify the active game (overlay) uses the SAME folder. Select and Allow it if not already configured.'
+    Write-Host 'Keep Local overrides enabled. Only one active overlay is supported at a time.'
     Write-Host 'Auto-start task installed. See README for the full guide.'
 }

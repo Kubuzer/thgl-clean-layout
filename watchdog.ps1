@@ -25,6 +25,7 @@ $lastErrors = @{}
 $refreshStates = @{}
 $appProcessIds = @{}
 $appIdentity = $null
+$overlayState = $null
 $logStream = $null
 
 function Log([string]$message) {
@@ -121,6 +122,35 @@ function FindDevTools([string]$path) {
     }
     return $null
 }
+function ShowDeveloperTools($main) {
+    $main.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).SetWindowVisualState(
+        [System.Windows.Automation.WindowVisualState]::Normal)
+    $developer = FindControl $main 'Developer Tools' ([System.Windows.Automation.ControlType]::Button)
+    if (-not $developer) {
+        $settings = FindControl $main 'Settings' ([System.Windows.Automation.ControlType]::Hyperlink)
+        if ($settings) {
+            $settings.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+            Start-Sleep -Milliseconds 400
+            $developer = FindControl $main 'Developer Tools' ([System.Windows.Automation.ControlType]::Button)
+        }
+    }
+    if ($developer) {
+        $developer.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+        Start-Sleep -Milliseconds 400
+    }
+}
+function GetOverlayButtons($main) {
+    $condition = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
+    foreach ($control in $main.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+        $condition)) {
+        $name = $control.Current.Name
+        if ($control.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button -and
+            $name.Length -le 74 -and $name -cmatch '^([a-z0-9]+(?:-[a-z0-9]+)*) \(overlay\)$') {
+            [pscustomobject]@{Name=$name; Path=('apps/' + $Matches[1] + '/overlay')}
+        }
+    }
+}
 function SendConsoleCommand($dev, [string]$command, $reloadState = $null) {
     if (-not [ThglForeground]::SetForegroundWindow([IntPtr]$dev.Current.NativeWindowHandle)) {
         throw 'DevTools did not receive foreground focus'
@@ -161,20 +191,8 @@ function OpenAndRefresh([string]$buttonName, [string]$path, $main, $state) {
         $buttonType = [System.Windows.Automation.ControlType]::Button
         $button = FindControl $main $buttonName $buttonType
         if (-not $button) {
-            $settings = FindControl $main 'Settings' ([System.Windows.Automation.ControlType]::Hyperlink)
-            if ($settings) {
-                $settings.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-                Start-Sleep -Milliseconds 400
-                $button = FindControl $main $buttonName $buttonType
-            }
-        }
-        if (-not $button) {
-            $developer = FindControl $main 'Developer Tools' $buttonType
-            if ($developer) {
-                $developer.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-                Start-Sleep -Milliseconds 400
-                $button = FindControl $main $buttonName $buttonType
-            }
+            ShowDeveloperTools $main
+            $button = FindControl $main $buttonName $buttonType
         }
         if (-not $button) { throw "TH.GL Developer Tools button unavailable: $buttonName" }
         $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
@@ -202,7 +220,7 @@ function OpenAndRefresh([string]$buttonName, [string]$path, $main, $state) {
         }
         $ack = 'THGL_CSS_' + [Guid]::NewGuid().ToString('N')
         $probe = "(()=>{let n=0;const t=setInterval(()=>{if(document.readyState==='complete'&&window.__thglCleanLayoutDocument!=='" +
-            $state.DocumentToken + "'&&getComputedStyle(document.documentElement).getPropertyValue('--thgl-clean-layout').trim()==='1'){clearInterval(t);console.info('" +
+            $state.DocumentToken + "'&&getComputedStyle(document.documentElement).getPropertyValue('--thgl-clean-layout').trim()==='2'){clearInterval(t);console.info('" +
             $ack + "');}else if(++n>=50){clearInterval(t);}},100);})()"
         SendConsoleCommand $dev $probe
         WaitConsoleText $dev $ack
@@ -252,28 +270,51 @@ function Tick {
         $script:refreshStates = @{}
         $script:appIdentity = $null
         $script:appProcessIds = @{}
+        $script:overlayState = $null
         return
     }
     $identity = [string]$app.Id + ':' + $app.StartTime.Ticks
     if ($appIdentity -ne $identity) {
         $script:refreshStates = @{}
         $script:appIdentity = $identity
+        $script:overlayState = $null
     }
     $script:appProcessIds = GetAppProcessIds $app
 
-    $overlay = $null
-    foreach ($window in (Windows)) {
-        $name = $window.Current.Name
-        if ($name -like '*AION 2 Interactive Map - The Hidden Gaming Lair*' -or
-            $name -eq 'THGL Overlay') {
-            $overlay = $window
-            break
-        }
-    }
-    $main = @((Windows) | Where-Object { $_.Current.ProcessId -eq $app.Id -and $_.Current.Name -eq 'The Hidden Gaming Lair' })
+    $windows = @(Windows)
+    $overlays = @($windows | Where-Object { $_.Current.Name -eq 'THGL Overlay' -or
+        $_.Current.Name -like '* Interactive Map - The Hidden Gaming Lair*' })
+    $main = @($windows | Where-Object { $_.Current.ProcessId -eq $app.Id -and $_.Current.Name -eq 'The Hidden Gaming Lair' })
     if ($main.Count -ne 1) { return }
     EnsureView 'dashboard' 'dashboard' $main[0] $main[0].Current.NativeWindowHandle
-    if ($overlay) { EnsureView 'aion2 (overlay)' 'apps/aion2/overlay' $main[0] $overlay.Current.NativeWindowHandle }
+    if ($overlays.Count -eq 0) { return }
+    if ($overlays.Count -ne 1) { LogRetry 'Multiple overlay windows; game ownership is ambiguous'; return }
+    $handle = $overlays[0].Current.NativeWindowHandle
+    if (-not $overlayState -or $overlayState.Handle -ne $handle) {
+        $script:overlayState = @{Handle=$handle; Button=$null; NextAttempt=[DateTime]::MinValue}
+    }
+    $buttons = @(GetOverlayButtons $main[0])
+    if ($buttons.Count -eq 0) {
+        $state = if ($overlayState.Button) { $refreshStates[$overlayState.Button.Path] } else { $null }
+        if ($state -and $state.ViewHandle -eq $handle -and $state.Ready) {
+            EnsureView $overlayState.Button.Name $overlayState.Button.Path $main[0] $handle
+            return
+        }
+        if ($state -and (Get-Date) -lt $state.NextAttempt) { return }
+        if ((Get-Date) -lt $overlayState.NextAttempt) { return }
+        $overlayState.NextAttempt = (Get-Date).AddSeconds(7)
+        ShowDeveloperTools $main[0]
+        $buttons = @(GetOverlayButtons $main[0])
+    }
+    if ($buttons.Count -ne 1) { LogRetry 'Expected one active game overlay button; no game was guessed'; return }
+    if (-not $overlayState.Button -or $overlayState.Button.Path -ne $buttons[0].Path) {
+        # One active overlay: changing games must not reuse a previous game's proof.
+        foreach ($key in @($refreshStates.Keys)) {
+            if ($key -like 'apps/*/overlay') { $refreshStates.Remove($key) }
+        }
+        $overlayState.Button = $buttons[0]
+    }
+    EnsureView $buttons[0].Name $buttons[0].Path $main[0] $handle
 }
 
 try {

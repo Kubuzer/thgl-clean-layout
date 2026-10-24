@@ -7,7 +7,6 @@ function Invoke-WebRequest {
     $large = 'https://static.th.gl/_next/static/chunks/large.css'
     switch ($Uri) {
         'https://app.th.gl/dashboard' { return @{Content = "<link href='$large'><link href='$small'>"} }
-        'https://app.th.gl/apps/aion2/overlay' { return @{Content = "<link href='$small'><link href='$large'>"} }
         $small {
             $content = 'body { color: black; }'
             $type = 'text/css; charset=utf-8'

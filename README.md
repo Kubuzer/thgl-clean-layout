@@ -4,7 +4,7 @@
 
 **A Windows tool that visually hides ads in TH.GL Companion.**
 
-Hides the dashboard advertising sidebar and the bottom-right ad panel on the **AION 2 interactive map** using local CSS overrides.
+Hides the dashboard advertising sidebar and the bottom-right ad panel in **TH.GL game overlays**, including AION 2 and Loftia, using local CSS overrides. The active game is discovered from TH.GL; there is no game list to edit.
 
 <p>
   <img src="https://img.shields.io/badge/Platform-Windows-334155?style=flat-square" alt="Windows" />
@@ -20,9 +20,9 @@ Hides the dashboard advertising sidebar and the bottom-right ad panel on the **A
 
 ## What it hides
 
-| TH.GL dashboard | AION 2 interactive map |
+| TH.GL dashboard | Active game overlay |
 |:--|:--|
-| **Hides the 360 px ad sidebar**, so the main content can use that space. | **Hides the bottom-right ad panel**, including the "Get AD Free" label. |
+| **Hides the 360 px ad sidebar**, so the main content can use that space. | **Hides the small or large bottom-right ad panel**, including the "Get AD Free" label. |
 | Dashboard navigation stays available. | Map controls and live player position tracking are not changed by the CSS. |
 
 No EXE patching, DNS blocking, browser extensions, game-memory access, or additional software installations. The tool uses **Microsoft Edge WebView2 DevTools Local Overrides** and a Windows scheduled task.
@@ -55,12 +55,12 @@ Open **TH.GL > Settings > Developer Tools > dashboard**, then:
    4. Click **Select Folder** in the Windows dialog, then **Allow** when DevTools asks for access.
    5. Make sure **Local overrides** is checked. If you can see the folder name and `static.th.gl` beneath it, **you're done** for this window.
 
-**4.** Start AION 2. Back in **TH.GL > Settings > Developer Tools**, open **aion2 (overlay)** DevTools. Repeat step 3 there, selecting **exactly the same `Documents\THGL-Clean-Layout` folder**. The dashboard and overlay are separate DevTools windows, so both require one-time folder access.
+**4.** Start your game and open its overlay. Back in **TH.GL > Settings > Developer Tools**, open the active game's **`<game> (overlay)`** entry, for example **loftia (overlay)** or **aion2 (overlay)**. In **Sources > Overrides**, verify that **Local overrides** is checked and **`Documents\THGL-Clean-Layout`** is selected. If it is already configured, keep it. Otherwise repeat step 3 using exactly the same folder.
 
 **5.** The task reloads each view, waits for confirmation that the local CSS is loaded in the new document, then closes its DevTools window. This includes DevTools you opened manually. Until confirmation succeeds, DevTools stays open and is minimized between retries. Ads may remain visible briefly until the CSS takes effect. You do **not** need to upload, paste, or move files in the `Overrides` panel.
 
 > [!NOTE]
-> Approving the Local Overrides folder in **both** DevTools windows is a one-time manual WebView2 permission step. The installer cannot approve it for you.
+> Check the folder in the dashboard and active overlay DevTools. TH.GL may reuse an existing configuration across games; a new DevTools profile can require manual **Allow**. The installer cannot grant that permission for you.
 
 > [!TIP]
 > **Can't find Overrides?** In **Sources**, use the **left-side More tabs** arrow next to **Page / Workspace**, not the DevTools three-dot menu at the top-right. Widen DevTools if necessary. [Microsoft Edge DevTools guidance](https://learn.microsoft.com/en-us/microsoft-edge/devtools/sources/).
@@ -80,7 +80,7 @@ flowchart LR
 
 | File | Purpose |
 |:--|:--|
-| `install.ps1` | Downloads a current TH.GL stylesheet to a local overrides folder, appends the ad-hiding CSS, and configures autostart. |
+| `install.ps1` | Selects the smallest current dashboard stylesheet, appends the ad-hiding CSS in a local overrides folder, and configures autostart. |
 | `watchdog.ps1` | Detects TH.GL views, reloads them with Overrides enabled, confirms the loaded CSS, and closes DevTools. |
 | `clean-layout.css` | Two targeted ad-hiding rules and a harmless custom property used to confirm stylesheet readiness. |
 
@@ -89,6 +89,10 @@ The upstream CSS is downloaded **to your computer**; this repository does not re
 The watchdog matches windows to TH.GL and its child processes in the current Windows session. Before reloading a view, it marks the old document and confirms the Console executed that command. It closes DevTools only after a unique Console result confirms a different, fully loaded document with the CSS readiness property. Missing confirmation leaves DevTools minimized for a retry after 7–60 seconds. A reload whose dispatch is uncertain is not sent again automatically; restart TH.GL if it cannot recover.
 
 Completed work is remembered by the dashboard or overlay window handle, so intentionally closed DevTools are not reopened on every poll. Hiding and showing the same overlay keeps that state; a new view handle or app restart requires fresh confirmation. Dashboard and overlay retries are independent. Logs rotate on startup and at approximately 2 MiB, retaining one previous log.
+
+The watchdog discovers the active game from the owned dashboard's **`<game> (overlay)`** button and derives its exact DevTools route. Only lowercase letters, digits, and single hyphens are accepted in a game identifier, up to 64 characters. **One active overlay window and one active game button are supported at a time.** Ambiguous windows or buttons are logged and left alone. Settings is opened only when an unknown or unfinished overlay needs discovery; returning Home after completion does not force it open every two seconds. A visible game-button change invalidates the previous game's completion even if the overlay window handle is reused.
+
+The selected dashboard stylesheet is currently shared by AION 2 and Loftia overlays. Another game or a future update may load different stylesheets. The CSS readiness check then leaves DevTools open and minimized rather than claiming success. Generic discovery supports games using the shared layout; it is not proof that every TH.GL game has been manually tested.
 
 ## Safe updates and recovery
 
@@ -118,9 +122,10 @@ This removes the project's scheduled task and generated local files. You can als
 ## Compatibility and limitations
 
 - **Windows only.** Manually checked on one Windows 11 PC with TH.GL Companion **22.27.0 and 22.28.0**. Other PCs and versions are not validated.
+- Those manual checks covered AION 2. Loftia's active-game button and shared advertisement ID were inspected on **23.23.0**, but this generic candidate still requires live acceptance. Other game names have inert discovery coverage, not manual game testing.
 - **Visual hiding, not ad blocking.** Advertising requests can still be sent; the tool only changes how the two ad containers are displayed.
 - TH.GL updates may change CSS filenames, DOM elements, or Developer Tools controls. Rerun the installer if a CSS filename changes; selectors may also need updating.
-- DevTools closes after CSS confirmation. The already loaded document keeps its styling, but a later reload or navigation in the same view may lose Overrides while DevTools is closed. The watchdog cannot detect that navigation without DevTools; restart TH.GL to reapply. A new view window is handled automatically.
+- DevTools closes after CSS confirmation. The already loaded document keeps its styling, but a later reload or navigation in the same view may lose Overrides while DevTools is closed. The watchdog cannot detect that navigation without DevTools; restart TH.GL to reapply. A new view window is handled automatically. A game change that reuses the same window while its game button is hidden also requires reopening Settings or restarting TH.GL so the new game can be identified.
 - The watchdog requires an unlocked interactive Windows session and reloads each new view once, including the map. If confirmation fails, DevTools stays open and minimized. Closing is based on confirmation, never a fixed startup delay.
 - The installer still requires administrator privileges. Path checks reject existing reparse points; they do not make an actively modified directory tree race-free. Do not let another process modify the installation directories during elevated install/uninstall.
 - Window/process matching and focus checks reduce accidental interaction with other windows. Sending Enter still depends on desktop focus; avoid switching windows while the watchdog attaches.

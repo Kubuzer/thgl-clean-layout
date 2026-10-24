@@ -16,7 +16,7 @@ namespace THGLTest.Automation {
   public enum TreeScope { Children, Descendants }
   public static class Condition { public static readonly object TrueCondition = new object(); }
   public static class AutomationElement {
-    public static object RootElement, FocusedElement, NameProperty;
+    public static object RootElement, FocusedElement, NameProperty, ControlTypeProperty;
     public static object FromHandle(IntPtr h) { return new object(); }
   }
   public class PropertyCondition {
@@ -50,9 +50,9 @@ if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
 $definitions = $ast.FindAll({param($node)
     $node -is [System.Management.Automation.Language.FunctionDefinitionAst]
 }, $true)
-foreach ($name in @('LogRetry', 'GetAppProcessIds', 'Windows', 'FindDevTools', 'SendConsoleCommand', 'WaitConsoleText', 'OpenAndRefresh', 'EnsureView', 'Tick')) {
+foreach ($name in @('LogRetry', 'GetAppProcessIds', 'Windows', 'FindDevTools', 'ShowDeveloperTools', 'GetOverlayButtons', 'SendConsoleCommand', 'WaitConsoleText', 'OpenAndRefresh', 'EnsureView', 'Tick')) {
     $definition = $definitions | Where-Object Name -eq $name
-    $body = $definition.Extent.Text.Replace('[System.Windows.Automation.', '[THGLTest.Automation.').Replace('[System.Windows.Forms.', '[THGLTest.Forms.')
+    $body = $definition.Extent.Text.Replace('System.Windows.Automation.', 'THGLTest.Automation.').Replace('System.Windows.Forms.', 'THGLTest.Forms.')
     . ([scriptblock]::Create($body))
 }
 $realFindControl = [scriptblock]::Create('param($parent, [string]$name, $kind)' + ($definitions | Where-Object Name -eq 'FindControl').Body.Extent.Text.Trim('{}').Replace('System.Windows.Automation.', 'THGLTest.Automation.'))
@@ -64,6 +64,7 @@ function Assert($condition, [string]$message) {
 function ResetFixture {
     $script:refreshStates = @{}; $script:lastErrors = @{}; $script:appProcessIds = @{}
     $script:appIdentity = $null
+    $script:overlayState = $null
     $script:windows = [Collections.Generic.List[object]]::new()
     $script:messages = [Collections.Generic.List[string]]::new()
     $script:ready = @{'dashboard'=$false; 'apps/aion2/overlay'=$true}
@@ -76,6 +77,8 @@ function ResetFixture {
     $script:cssLoaded = $true; $script:reloadCompletes = $true; $script:documentComplete = $true
     $script:echoOnly = $false; $script:closeWorks = $true
     $script:failReloadFocus = $false
+    $script:overlayButtons = @('aion2 (overlay)'); $script:controlsVisible = $true
+    $script:navigationCount = 0; $script:navigationWorks = $true
     $script:commandPath = $null; $script:nextHandle = 100
     $script:app = [pscustomobject]@{
         Id=123; MainWindowHandle=[IntPtr]42; StartTime=[DateTime]'2026-01-01'
@@ -83,6 +86,16 @@ function ResetFixture {
     }
     $script:windows.Add((NewWindow 'controller' 123 'Controller'))
     $script:main = NewWindow 'main' 123 'The Hidden Gaming Lair'
+    $script:main | Add-Member ScriptMethod FindAll {
+        param($scope,$condition)
+        if ($script:controlsVisible) {
+            foreach ($name in $script:overlayButtons) {
+                [pscustomobject]@{Current=[pscustomobject]@{Name=$name; ControlType=[THGLTest.Automation.ControlType]::Button}}
+            }
+            # A matching name on a non-button must never become an executable target.
+            [pscustomobject]@{Current=[pscustomobject]@{Name='foreign (overlay)'; ControlType=[THGLTest.Automation.ControlType]::Text}}
+        }
+    }
     $script:windows.Add($main)
     [THGLTest.Forms.SendKeys]::Calls = 0
     [ThglForeground]::KeepFocus = $true
@@ -144,10 +157,11 @@ function FindControl {
         }
         return (& $script:realFindControl $outputParent $name $kind)
     }
-    if ($name -in @('dashboard', 'aion2 (overlay)')) {
+    if ($name -eq 'dashboard' -or ($script:controlsVisible -and $name -cin $script:overlayButtons)) {
         if ($parent.Current.Name -ne 'The Hidden Gaming Lair' -or $parent.Current.ProcessId -ne $app.Id) { return $null }
         if ($name -eq 'dashboard' -and $script:failDashboard) { return $null }
-        $path = if ($name -eq 'dashboard') { 'dashboard' } else { 'apps/aion2/overlay' }
+        $path = if ($name -eq 'dashboard') { 'dashboard' } else { 'apps/' + $name.Substring(0, $name.Length - 10) + '/overlay' }
+        if (-not $script:ready.ContainsKey($path)) { $script:ready[$path] = $true }
         $button = [pscustomobject]@{Path=$path}
         $button | Add-Member ScriptMethod GetCurrentPattern {param($pattern); return $this}
         $button | Add-Member ScriptMethod Invoke {
@@ -156,7 +170,15 @@ function FindControl {
         }
         return $button
     }
-    if ($name -in @('Settings', 'Developer Tools')) { return $null }
+    if ($name -in @('Settings', 'Developer Tools')) {
+        $button = [pscustomobject]@{}
+        $button | Add-Member ScriptMethod GetCurrentPattern {param($pattern); return $this}
+        $button | Add-Member ScriptMethod Invoke {
+            $script:navigationCount++
+            if ($script:navigationWorks) { $script:controlsVisible = $true }
+        }
+        return $button
+    }
     if (-not $script:ready[$parent.Path]) { return $null }
     if ($name -eq 'Console') {
         $tab = [pscustomobject]@{}
@@ -190,7 +212,7 @@ function InvokeFixtureCommand {
         # Inert browser simulation: production command must contain every proof guard.
         if ($command -notmatch "document\.readyState==='complete'" -or
             $command -notmatch "window\.__thglCleanLayoutDocument!==('[a-f0-9]+')" -or
-            $command -notmatch "getPropertyValue\('--thgl-clean-layout'\)\.trim\(\)==='1'") { throw 'Missing CSS/new-document proof guard' }
+            $command -notmatch "getPropertyValue\('--thgl-clean-layout'\)\.trim\(\)==='2'") { throw 'Missing current-CSS/new-document proof guard' }
         if ($script:cssLoaded -and $script:documentComplete -and -not $script:documentTokens.ContainsKey($path)) {
             $script:outputs[$path] = @($(if ($script:echoOnly) { "'" + $token + "'" } else { $token }))
         }
@@ -376,6 +398,91 @@ Assert ($reloadCounts['dashboard'] -eq 2) 'Recreated dashboard retained complete
 $app.StartTime = $app.StartTime.AddMinutes(1)
 Tick
 Assert ($reloadCounts['dashboard'] -eq 3) 'App restart retained intentional-close state'
+
+# Discover the active game from actual production control enumeration, not a game list.
+foreach ($slug in @('loftia', 'aion2', 'new-game-42', ('a' * 64))) {
+    ResetFixture
+    $overlayButtons = @("$slug (overlay)")
+    $windows.Add((NewWindow 'overlay' 222 'THGL Overlay'))
+    Tick
+    $path = "apps/$slug/overlay"
+    Assert ($refreshStates[$path].Ready -and $reloadCounts[$path] -eq 1) "Active game not discovered: $slug"
+    Assert (@(GetOverlayButtons $main).Count -eq 1) 'Non-button name became a target'
+}
+
+# Invalid names cannot become a route, URL, command, or extra path segment.
+foreach ($name in @('../loftia (overlay)', 'a/b (overlay)', 'https://evil.test (overlay)',
+    'Loftia (overlay)', 'loftia (overlay) extra', 'loftia (overlay)/', 'a--b (overlay)',
+    '-loftia (overlay)', 'loftia- (overlay)', 'loftia (desktop)', 'x";evil (overlay)',
+    (('a' * 65) + ' (overlay)'))) {
+    ResetFixture
+    $overlayButtons = @($name)
+    $windows.Add((NewWindow 'overlay' 222 'THGL Overlay'))
+    Tick
+    Assert (@($refreshStates.Keys | Where-Object { $_ -like 'apps/*' }).Count -eq 0) "Invalid game name accepted: $name"
+}
+
+# Multiple valid buttons or owned windows have no safe game/window association.
+ResetFixture
+$overlayButtons = @('loftia (overlay)', 'aion2 (overlay)')
+$windows.Add((NewWindow 'overlay' 222 'THGL Overlay'))
+Tick
+Assert (@($refreshStates.Keys | Where-Object { $_ -like 'apps/*' }).Count -eq 0) 'Multiple game buttons guessed a game'
+ResetFixture
+$windows.Add((NewWindow 'overlay' 222 'THGL Overlay'))
+$windows.Add((NewWindow 'overlay' 333 'Loftia Interactive Map - The Hidden Gaming Lair'))
+Tick
+Assert (@($refreshStates.Keys | Where-Object { $_ -like 'apps/*' }).Count -eq 0) 'Multiple overlay windows guessed ownership'
+ResetFixture
+$windows.Add((NewWindow 'overlay' 999 'THGL Overlay'))
+Tick
+Assert (@($refreshStates.Keys | Where-Object { $_ -like 'apps/*' }).Count -eq 0) 'Foreign overlay process became active'
+
+# A previously open game's DevTools cannot alias the newly discovered game.
+ResetFixture
+$overlayButtons = @('loftia (overlay)')
+$stale = NewWindow 'apps/aion2/overlay'
+$windows.Add($stale)
+$overlay = NewWindow 'overlay' 222 'Loftia Interactive Map - The Hidden Gaming Lair'
+$windows.Add($overlay)
+Tick
+Assert ($refreshStates['apps/loftia/overlay'].Ready -and -not $stale.Closed) 'Different game DevTools was reused or closed'
+$overlayButtons = @('new-game (overlay)')
+Tick
+Assert ($reloadCounts['apps/new-game/overlay'] -eq 1 -and -not $refreshStates.ContainsKey('apps/loftia/overlay')) 'Same-HWND game change reused prior proof'
+$overlayButtons = @('loftia (overlay)')
+Tick
+Assert ($reloadCounts['apps/loftia/overlay'] -eq 2) 'Returning game reused stale same-HWND proof'
+
+# Going Home or hiding the completed overlay must not force Settings every tick.
+$controlsVisible = $false
+$beforeNavigation = $navigationCount
+Tick
+$windows.Remove($overlay) | Out-Null
+Tick
+$windows.Add($overlay)
+Tick
+Assert ($navigationCount -eq $beforeNavigation -and $reloadCounts['apps/loftia/overlay'] -eq 2) 'Home/F6 forced navigation or repeated reload'
+$windows.Remove($overlay) | Out-Null
+$overlay = NewWindow 'overlay' 222 'THGL Overlay'
+$windows.Add($overlay)
+Tick
+Assert ($navigationCount -eq $beforeNavigation + 1 -and $reloadCounts['apps/loftia/overlay'] -eq 3) 'New overlay did not discover controls through Developer Tools'
+
+# Failed discovery retries are bounded; an unknown overlay does not steal Settings every tick.
+ResetFixture
+$ready['dashboard'] = $true
+$controlsVisible = $false
+$navigationWorks = $false
+$windows.Add((NewWindow 'overlay' 222 'THGL Overlay'))
+Tick
+$beforeNavigation = $navigationCount
+Tick
+Assert ($beforeNavigation -gt 0 -and $navigationCount -eq $beforeNavigation) 'Overlay discovery ignored its retry delay'
+$navigationWorks = $true
+$overlayState.NextAttempt = [DateTime]::MinValue
+Tick
+Assert ($refreshStates['apps/aion2/overlay'].Ready) 'Overlay discovery did not recover after navigation became available'
 
 # 7. Distinct errors cannot grow the retry log dictionary without bound.
 ResetFixture
