@@ -122,11 +122,12 @@ This removes the project's scheduled task and generated local files. You can als
 ## Compatibility and limitations
 
 - **Windows only.** Manually checked on one Windows 11 PC with TH.GL Companion **22.27.0 and 22.28.0**. Other PCs and versions are not validated.
-- Those manual checks covered AION 2. Loftia's active-game button and shared advertisement ID were inspected on **23.23.0**, but this generic candidate still requires live acceptance. Other game names have inert discovery coverage, not manual game testing.
+- Those earlier checks covered AION 2. On **23.23.0**, the generic version discovered Loftia, confirmed the new CSS, and the user confirmed that its advertisement disappeared. Other game names have inert discovery coverage, not manual game testing.
 - **Visual hiding, not ad blocking.** Advertising requests can still be sent; the tool only changes how the two ad containers are displayed.
 - TH.GL updates may change CSS filenames, DOM elements, or Developer Tools controls. Rerun the installer if a CSS filename changes; selectors may also need updating.
 - DevTools closes after CSS confirmation. The already loaded document keeps its styling, but a later reload or navigation in the same view may lose Overrides while DevTools is closed. The watchdog cannot detect that navigation without DevTools; restart TH.GL to reapply. A new view window is handled automatically. A game change that reuses the same window while its game button is hidden also requires reopening Settings or restarting TH.GL so the new game can be identified.
 - The watchdog requires an unlocked interactive Windows session and reloads each new view once, including the map. If confirmation fails, DevTools stays open and minimized. Closing is based on confirmation, never a fixed startup delay.
+- DevTools can block closing with a **Leave site?** warning about unsaved changes. Review those changes and choose **Leave** yourself if you want to discard them, or **Cancel** to keep them. The watchdog does not automatically dismiss that warning.
 - The installer still requires administrator privileges. Path checks reject existing reparse points; they do not make an actively modified directory tree race-free. Do not let another process modify the installation directories during elevated install/uninstall.
 - Window/process matching and focus checks reduce accidental interaction with other windows. Sending Enter still depends on desktop focus; avoid switching windows while the watchdog attaches.
 - This is an **unofficial community project**, not affiliated with or endorsed by TH.GL. Check TH.GL's applicable terms before using it. Use at your own risk.
