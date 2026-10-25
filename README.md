@@ -9,7 +9,7 @@ Hides the dashboard advertising sidebar and the bottom-right ad panel in **TH.GL
 <p>
   <img src="https://img.shields.io/badge/Platform-Windows-334155?style=flat-square" alt="Windows" />
   <img src="https://img.shields.io/badge/PowerShell-5.1-334155?style=flat-square" alt="PowerShell 5.1" />
-  <img src="https://img.shields.io/badge/Tested-TH.GL%2022.28.0-155e63?style=flat-square" alt="Tested with TH.GL 22.28.0" />
+  <img src="https://img.shields.io/badge/Tested-TH.GL%2023.23.0-155e63?style=flat-square" alt="Tested with TH.GL 23.23.0" />
   <img src="https://img.shields.io/badge/License-MIT-155e63?style=flat-square" alt="MIT license" />
 </p>
 
@@ -121,8 +121,8 @@ This removes the project's scheduled task and generated local files. You can als
 
 ## Compatibility and limitations
 
-- **Windows only.** Manually checked on one Windows 11 PC with TH.GL Companion **22.27.0 and 22.28.0**. Other PCs and versions are not validated.
-- Those earlier checks covered AION 2. On **23.23.0**, the generic version discovered Loftia, confirmed the new CSS, and the user confirmed that its advertisement disappeared. Other game names have inert discovery coverage, not manual game testing.
+- **Windows only.** Manually checked on one Windows 11 PC with TH.GL Companion **22.27.0, 22.28.0 and 23.23.0**. Other PCs and versions are not validated.
+- Earlier checks covered AION 2. The generic version was then checked with Loftia: CSS was confirmed, both DevTools closed after a fresh start, and the user confirmed ad hiding, map operation and hiding/showing the overlay without reopening DevTools. Other game names have inert discovery coverage, not manual game testing.
 - **Visual hiding, not ad blocking.** Advertising requests can still be sent; the tool only changes how the two ad containers are displayed.
 - TH.GL updates may change CSS filenames, DOM elements, or Developer Tools controls. Rerun the installer if a CSS filename changes; selectors may also need updating.
 - DevTools closes after CSS confirmation. The already loaded document keeps its styling, but a later reload or navigation in the same view may lose Overrides while DevTools is closed. The watchdog cannot detect that navigation without DevTools; restart TH.GL to reapply. A new view window is handled automatically. A game change that reuses the same window while its game button is hidden also requires reopening Settings or restarting TH.GL so the new game can be identified.
