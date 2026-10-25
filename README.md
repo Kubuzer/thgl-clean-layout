@@ -2,163 +2,165 @@
 
 # TH.GL Clean Layout
 
-**A Windows tool that visually hides ads in TH.GL Companion.**
+**Universal ad-panel layout fix for TH.GL Companion on Windows.**
 
-Hides the dashboard advertising sidebar and the bottom-right ad panel in **TH.GL game overlays**, including AION 2 and Loftia, using local CSS overrides. The active game is discovered from TH.GL; there is no game list to edit.
+Automatically detects the active game and hides TH.GL's standard dashboard and game-overlay ad panels using local CSS overrides.
 
 <p>
   <img src="https://img.shields.io/badge/Platform-Windows-334155?style=flat-square" alt="Windows" />
-  <img src="https://img.shields.io/badge/PowerShell-5.1-334155?style=flat-square" alt="PowerShell 5.1" />
-  <img src="https://img.shields.io/badge/Tested-TH.GL%2023.23.0-155e63?style=flat-square" alt="Tested with TH.GL 23.23.0" />
+  <img src="https://img.shields.io/badge/PowerShell-5.1-334155?style=flat-square" alt="Windows PowerShell 5.1" />
+  <a href="https://github.com/Kubuzer/thgl-clean-layout/actions/workflows/tests.yml"><img src="https://github.com/Kubuzer/thgl-clean-layout/actions/workflows/tests.yml/badge.svg?branch=main" alt="Regression tests" /></a>
   <img src="https://img.shields.io/badge/License-MIT-155e63?style=flat-square" alt="MIT license" />
 </p>
 
 </div>
 
 > [!IMPORTANT]
-> **This script hides advertisements; it does not block them.** It applies CSS to make two advertising containers invisible and reclaim their screen space. Ad requests may still occur. It does not remove advertising code, unlock TH.GL's paid ad-free features, or modify the TH.GL executable.
+> **Visual hiding, not ad blocking.** Advertising requests may still occur. This tool does not unlock paid features or modify TH.GL or game executables.
 
-## What it hides
-
-| TH.GL dashboard | Active game overlay |
+| Dashboard | Active game overlay |
 |:--|:--|
-| **Hides the 360 px ad sidebar**, so the main content can use that space. | **Hides the small or large bottom-right ad panel**, including the "Get AD Free" label. |
-| Dashboard navigation stays available. | Map controls and live player position tracking are not changed by the CSS. |
+| Hides the advertising sidebar and reclaims its space. | Hides the small or large bottom-right advertising panel, including **Get AD Free**. |
+| Navigation remains available. | Map controls and player tracking are not changed by the CSS. |
 
-No EXE patching, DNS blocking, browser extensions, game-memory access, or additional software installations. The tool uses **Microsoft Edge WebView2 DevTools Local Overrides** and a Windows scheduled task.
+The same detection and CSS rules are used across games; there is no game list to maintain. **One active game overlay is supported at a time.** Compatibility depends on TH.GL continuing to use its shared overlay layout and stylesheet.
 
-**Why PowerShell?** Windows PowerShell installs the local CSS override and creates the scheduled task that opens DevTools, confirms the loaded CSS, and closes DevTools. All source code is readable in this repository; review it before running anything as administrator. No game files are patched.
+## Requirements
 
-## Quick start
+- Windows with **Windows PowerShell 5.1**. No Python, Node.js, or PowerShell 7 is needed to use the tool.
+- TH.GL Companion already installed, with a working overlay for your game.
+- Administrator access **on the same Windows account that runs TH.GL**. Do not install using another account's administrator credentials: the folder and logon task belong to the installing account.
+- Internet access during installation and updates. The watchdog needs an unlocked, interactive Windows session.
 
-**1.** [Download ZIP](https://github.com/Kubuzer/thgl-clean-layout/archive/refs/heads/main.zip), extract it, and review the scripts. If another script already manages TH.GL DevTools, stop it and disable its autostart first; preserve its files before replacing it.
+## First-time setup
 
-**2.** Open **Windows PowerShell 5.1 as Administrator** in the extracted folder and run:
+**1. Download and extract.** [Download the ZIP](https://github.com/Kubuzer/thgl-clean-layout/archive/refs/heads/main.zip), use **Extract All**, and review the scripts. Keep the extracted folder for updates and removal. If another script manages TH.GL DevTools, stop it and disable its autostart first, preserving its files.
+
+**2. Prepare the shell.** Fully quit TH.GL from its system tray menu and close its DevTools, saving any work first. Open **Windows PowerShell as administrator** using your usual Windows account. Change to the extracted folder containing `install.ps1`; replace the example path below with its actual full path:
+
+```powershell
+Set-Location -LiteralPath 'C:\full\path\to\thgl-clean-layout-main'
+```
+
+**3. Install.** Run:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-**3.** **Do not copy or drag any files into DevTools.** The installer has already created the CSS override on your computer. DevTools only needs permission to read that folder.
+Continue only after the installer reports success. **If it reports an error, stop here and read it; do not continue setup.** The installer prints the absolute Overrides folder to use.
 
-Open **TH.GL > Settings > Developer Tools > dashboard**, then:
+**4. Pause the task for setup.** After installation succeeds, run:
 
-   1. In DevTools, click **Sources** (top bar).
-   2. In the **left panel**, open **Overrides**. If you only see **Page** or **Workspace**, click the small **More tabs** arrow beside them and choose **Overrides**.
-   3. Click **Select folder for overrides**. In the Windows folder picker, select the **folder itself** (not a CSS file):
-
-      ```text
-      Documents\THGL-Clean-Layout\        <-- SELECT THIS FOLDER
-        static.th.gl\_next\static\chunks\...css  <-- created automatically
-      ```
-
-   4. Click **Select Folder** in the Windows dialog, then **Allow** when DevTools asks for access.
-   5. Make sure **Local overrides** is checked. If you can see the folder name and `static.th.gl` beneath it, **you're done** for this window.
-
-**4.** Start your game and open its overlay. Back in **TH.GL > Settings > Developer Tools**, open the active game's **`<game> (overlay)`** entry, for example **loftia (overlay)** or **aion2 (overlay)**. In **Sources > Overrides**, verify that **Local overrides** is checked and **`Documents\THGL-Clean-Layout`** is selected. If it is already configured, keep it. Otherwise repeat step 3 using exactly the same folder.
-
-**5.** The task reloads each view, waits for confirmation that the local CSS is loaded in the new document, then closes its DevTools window. This includes DevTools you opened manually. Until confirmation succeeds, DevTools stays open and is minimized between retries. Ads may remain visible briefly until the CSS takes effect. You do **not** need to upload, paste, or move files in the `Overrides` panel.
-
-> [!NOTE]
-> Check the folder in the dashboard and active overlay DevTools. TH.GL may reuse an existing configuration across games; a new DevTools profile can require manual **Allow**. The installer cannot grant that permission for you.
-
-> [!TIP]
-> **Can't find Overrides?** In **Sources**, use the **left-side More tabs** arrow next to **Page / Workspace**, not the DevTools three-dot menu at the top-right. Widen DevTools if necessary. [Microsoft Edge DevTools guidance](https://learn.microsoft.com/en-us/microsoft-edge/devtools/sources/).
->
-> **Already see a folder and checked "Local overrides"?** Verify that it points to the folder printed by this installer. If it points elsewhere, use **Clear configuration**, select the correct folder, and approve access again. Do not add individual files.
-
-## How ad hiding works
-
-```mermaid
-flowchart LR
-    A[TH.GL starts] --> B[Windows watchdog task]
-    B --> C[Open DevTools]
-    C --> D[Apply local CSS]
-    D --> E[Hide two ad containers]
-    E --> F[Confirm CSS and close DevTools]
+```powershell
+Stop-ScheduledTask -TaskName 'THGL Clean Layout' -TaskPath '\'
 ```
 
-| File | Purpose |
-|:--|:--|
-| `install.ps1` | Selects the smallest current dashboard stylesheet, appends the ad-hiding CSS in a local overrides folder, and configures autostart. |
-| `watchdog.ps1` | Detects TH.GL views, reloads them with Overrides enabled, confirms the loaded CSS, and closes DevTools. |
-| `clean-layout.css` | Two targeted ad-hiding rules and a harmless custom property used to confirm stylesheet readiness. |
+This keeps the watchdog from moving, minimizing, or closing DevTools while you configure folder access.
 
-The upstream CSS is downloaded **to your computer**; this repository does not redistribute TH.GL assets. The watchdog waits 2 seconds between checks, reducing the delay before it detects a new overlay. Window inspection, DevTools startup, and loading the stylesheet add their own time, so ads can still be visible briefly. Its script is installed in the administrator-protected `Program Files\THGL-Clean-Layout` directory because the scheduled task may need elevated privileges.
+**5. Connect the dashboard.** Start TH.GL, then open **Settings > Developer Tools > dashboard**. In DevTools:
 
-The watchdog matches windows to TH.GL and its child processes in the current Windows session. Before reloading a view, it marks the old document and confirms the Console executed that command. It closes DevTools only after a unique Console result confirms a different, fully loaded document with the CSS readiness property. Missing confirmation leaves DevTools minimized for a retry after 7–60 seconds. A reload whose dispatch is uncertain is not sent again automatically; restart TH.GL if it cannot recover.
+1. Select **Sources**.
+2. In the **left-side Navigator**, select **Overrides**. If it is hidden, use the small **More tabs** arrow beside **Page / Workspace**.
+3. Choose **Select folder for overrides**, select the **folder printed by the installer**, and approve **Allow**. The usual location is `Documents\THGL-Clean-Layout`; redirected Documents folders can differ.
+4. Leave **Local overrides** enabled.
 
-Completed work is remembered by the dashboard or overlay window handle, so intentionally closed DevTools are not reopened on every poll. Hiding and showing the same overlay keeps that state; a new view handle or app restart requires fresh confirmation. Dashboard and overlay retries are independent. Logs rotate on startup and at approximately 2 MiB, retaining one previous log.
+**Do not drag, upload, or add individual files.** The installer already created the CSS. Select the folder itself, not the stylesheet inside it. If the correct folder is already selected, keep it. If it points elsewhere, use **Clear configuration** and select the correct folder.
 
-The watchdog discovers the active game from the owned dashboard's **`<game> (overlay)`** button and derives its exact DevTools route. Only lowercase letters, digits, and single hyphens are accepted in a game identifier, up to 64 characters. **One active overlay window and one active game button are supported at a time.** Ambiguous windows or buttons are logged and left alone. Settings is opened only when an unknown or unfinished overlay needs discovery; returning Home after completion does not force it open every two seconds. A visible game-button change invalidates the previous game's completion even if the overlay window handle is reused.
+**6. Connect the active overlay.** Start your game and show its TH.GL overlay. In **TH.GL > Settings > Developer Tools**, open the running game's **`<game> (overlay)`** entry. Check **Sources > Overrides** there too, using the **same folder**. A shared profile may already have this configured; a new profile may need **Allow** once. Close the DevTools windows after setup, reviewing any unsaved-changes warning yourself.
 
-The selected dashboard stylesheet is currently shared by AION 2 and Loftia overlays. Another game or a future update may load different stylesheets. The CSS readiness check then leaves DevTools open and minimized rather than claiming success. Generic discovery supports games using the shared layout; it is not proof that every TH.GL game has been manually tested.
+**7. Resume and verify.** In the same Administrator Windows PowerShell window, run:
 
-## Safe updates and recovery
+```powershell
+Start-ScheduledTask -TaskName 'THGL Clean Layout' -TaskPath '\'
+Get-ScheduledTask -TaskName 'THGL Clean Layout' -TaskPath '\' | Select-Object TaskName, State
+```
 
-- The manifest accepts only a single CSS file in the generated stylesheet directory. Parent traversal, unexpected files, and symbolic links/junctions in managed paths are rejected.
-- New installations record SHA-256 hashes of the generated CSS and installed watchdog. If either file has been edited, update and uninstall stop rather than discarding the changes. Preserve or move the edited file before retrying. These hashes detect edits; the user-writable manifest is not an authentication mechanism.
-- Existing files without a recognized manifest are not overwritten. Legacy installations are migrated with copies of their CSS and watchdog under `Documents\THGL-Clean-Layout\backups`. Those backups are intentionally retained after uninstall.
-- Files are written through temporary files in the same directory. If a later operation fails, the installer attempts to restore the previous files and scheduled task. An incomplete rollback is reported explicitly. This handles caught errors; recovery after power loss or forcibly terminating PowerShell is not guaranteed.
-- Uninstall reports an error if it cannot remove a managed file and retains/restores the manifest for another attempt.
-- Diagnostic logs are discarded during uninstall and are not restored on rollback. Log removal unlinks files without copying their contents into recovery files.
+The state should be **Running**. Leave TH.GL and the overlay open and avoid switching windows while the watchdog attaches. DevTools opens briefly, each view reloads, and DevTools closes after the CSS is confirmed. The advertisement should disappear while the map remains usable.
 
-Use a normal filesystem directory for Local Overrides. Redirected Documents paths are supported when their filesystem path contains no symbolic links or junctions. Do not bypass a rejected path by running an altered elevated script.
+**Running alone is not proof that CSS was applied.** Check the log:
 
-To update, extract the latest source into a separate folder and run `install.ps1` again in Administrator Windows PowerShell 5.1. Keep the existing Overrides folder selected in both DevTools windows. The installer updates the managed files and restarts the task; folder access does not need to be approved again unless the selection changes.
+```powershell
+Get-Content -LiteralPath (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'THGL-Clean-Layout\watchdog.log') -Tail 20
+```
 
-If TH.GL restarts with different privileges and the watchdog stops recognizing its DevTools, fully quit TH.GL from the system tray and close both DevTools windows, then start TH.GL again. A WebView2 process from the previous app instance can otherwise survive outside the new instance's process tree.
+Look for both messages, with your game's actual identifier:
 
-## Uninstall
+```text
+CSS confirmed; closed DevTools dashboard
+CSS confirmed; closed DevTools apps/<game>/overlay
+```
 
-Run this from the extracted repository in **Administrator PowerShell**:
+On later logons, the task starts automatically. It detects the active overlay, confirms the loaded CSS, and closes DevTools without a per-game configuration file. Reused profiles keep their folder access.
+
+## Updates, inspection, and removal
+
+**Update:** quit TH.GL and close DevTools after saving any work. Extract the latest ZIP into a separate folder, open Administrator Windows PowerShell there under the same account, and run `install.ps1` again. The installer updates the managed files and restarts the task. Start TH.GL again; retain the existing Overrides folder selection.
+
+**Inspect DevTools:** pause the task with the `Stop-ScheduledTask` command above before opening DevTools for manual work. Resume it with `Start-ScheduledTask` when finished; the watchdog also closes manually opened DevTools after CSS confirmation.
+
+**Uninstall:** quit TH.GL and close DevTools. In Administrator Windows PowerShell, change to the extracted source folder and run:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Uninstall
 ```
 
-This removes the project's scheduled task and generated local files. You can also disable **Local overrides** or revoke the folder permission in each DevTools window. TH.GL itself is not uninstalled or modified.
+This removes the scheduled task and managed installation files. TH.GL itself is unchanged. Legacy backups and unrelated files are preserved. You may clear the Overrides folder selection in DevTools afterward.
 
-## Compatibility and limitations
+If update or uninstall reports a modified or unrecognized file, preserve your changes and resolve the error before retrying. The installer deliberately refuses to discard unknown changes.
 
-- **Windows only.** Manually checked on one Windows 11 PC with TH.GL Companion **22.27.0, 22.28.0 and 23.23.0**. Other PCs and versions are not validated.
-- Earlier checks covered AION 2. The generic version was then checked with Loftia: CSS was confirmed, both DevTools closed after a fresh start, and the user confirmed ad hiding, map operation and hiding/showing the overlay without reopening DevTools. Other game names have inert discovery coverage, not manual game testing.
-- **Visual hiding, not ad blocking.** Advertising requests can still be sent; the tool only changes how the two ad containers are displayed.
-- TH.GL updates may change CSS filenames, DOM elements, or Developer Tools controls. Rerun the installer if a CSS filename changes; selectors may also need updating.
-- DevTools closes after CSS confirmation. The already loaded document keeps its styling, but a later reload or navigation in the same view may lose Overrides while DevTools is closed. The watchdog cannot detect that navigation without DevTools; restart TH.GL to reapply. A new view window is handled automatically. A game change that reuses the same window while its game button is hidden also requires reopening Settings or restarting TH.GL so the new game can be identified.
-- The watchdog requires an unlocked interactive Windows session and reloads each new view once, including the map. If confirmation fails, DevTools stays open and minimized. Closing is based on confirmation, never a fixed startup delay.
-- DevTools can block closing with a **Leave site?** warning about unsaved changes. Review those changes and choose **Leave** yourself if you want to discard them, or **Cancel** to keep them. The watchdog does not automatically dismiss that warning.
-- The installer still requires administrator privileges. Path checks reject existing reparse points; they do not make an actively modified directory tree race-free. Do not let another process modify the installation directories during elevated install/uninstall.
-- Window/process matching and focus checks reduce accidental interaction with other windows. Sending Enter still depends on desktop focus; avoid switching windows while the watchdog attaches.
-- This is an **unofficial community project**, not affiliated with or endorsed by TH.GL. Check TH.GL's applicable terms before using it. Use at your own risk.
+## Troubleshooting
 
-Manual checks on that PC covered both Overrides folders, map operation and ad hiding, recovery after closing each DevTools separately, startup with a minimized dashboard, reboot autostart, and uninstall/reinstall. The two-second polling version was installed and the user confirmed faster startup; no precise end-to-end timing was measured.
+| Symptom | What to check |
+|:--|:--|
+| Advertisement remains visible | Confirm the task is Running, then check the log and the active overlay's Overrides folder. Startup can require retries; completed views are not reloaded on every check. |
+| No game overlay entry | Open a supported game's TH.GL overlay first. Keep one eligible map/overlay window open; multiple windows or game buttons are treated as ambiguous. |
+| DevTools stays open or minimized | CSS or Console confirmation has not completed. Check folder access, close DevTools and fully quit TH.GL, then restart it. After an upstream layout/stylesheet change, update the tool. |
+| **Leave site?** warns about unsaved changes | Review those changes. Choose **Leave** yourself only if you want to discard them, or **Cancel** to retain them. The watchdog does not dismiss this warning automatically. |
+| Advertisement returns after a reload or game switch | Restart TH.GL to reapply the CSS. If a game reuses the same window, opening **Settings** can expose its new game button for discovery. |
 
-Those lifecycle checks cover the earlier version that kept DevTools minimized. Automatic closing was then checked on the same PC for both dashboard and overlay: the log confirmed the loaded CSS in each new document, both DevTools windows closed, and no repeated reloads followed during observation. The overlay needed one retry before confirmation. This does not establish compatibility on other PCs.
+The log is `watchdog.log` in the folder printed by the installer. One previous log is retained as `watchdog.log.1`. For a bug report, include your TH.GL version, game identifier, what happened, and the relevant log lines after reviewing them for personal information.
 
-## Development and offline tests
+## Compatibility and limits
 
-No package installation is needed for the application. Isolated staging does not create scheduled tasks:
+- Manual acceptance: **one Windows 11 PC, TH.GL 23.23.0, Loftia**. Ad hiding, map operation, automatic DevTools closing, and overlay hide/show were checked. Other game identifiers have regression coverage; every game has not been manually tested.
+- Universal discovery applies to TH.GL's **shared overlay layout**. The tool selects a dashboard stylesheet currently shared by the tested overlay. A different layout or stylesheet may need an update; missing CSS confirmation leaves DevTools open instead of claiming success.
+- Closing DevTools preserves the loaded document's styling. A later navigation or manual reload in the same window may lose Overrides. Restart TH.GL to reapply them.
+- The watcher waits two seconds between checks, with longer delays after failures. It reloads a new view once; initial ads and a brief focus change can occur during attachment.
+- Installation uses the account's Documents folder, an administrator-protected watchdog in `Program Files\THGL-Clean-Layout`, and the **THGL Clean Layout** logon task. Managed paths must be ordinary filesystem directories, without symbolic links or junctions.
 
-```powershell
-powershell.exe -NoProfile -NonInteractive -File .\install.ps1 -StageOnly -InstallRoot "$env:TEMP\THGL-QA"
-powershell.exe -NoProfile -NonInteractive -File .\install.ps1 -StageOnly -Uninstall -InstallRoot "$env:TEMP\THGL-QA"
-```
+This is an unofficial community project, not affiliated with or endorsed by TH.GL. Review the scripts and TH.GL's applicable terms before using it.
 
-Live staging downloads CSS from `app.th.gl` and `static.th.gl`. It does not run the watchdog or verify Windows/WebView2 behavior. `-StageOnly` also runs on PowerShell 7 for filesystem testing.
+<details>
+<summary>Development and verification</summary>
 
-The offline installer suite needs Python 3 (standard library only) and a supplied PowerShell executable. HTTP responses and selected failures are synthetic; the real installer runs in temporary directories. Run the command below from Windows PowerShell 5.1 so its child processes inherit the correct Windows PowerShell module paths:
+Run commands from the repository root. The installer tests require Python 3, using only its standard library. Launch them from Windows PowerShell 5.1 so child processes inherit the correct module paths. Supply the installed engine you want to test:
 
 ```text
 python tests/test_install.py --pwsh powershell.exe
+python tests/test_install.py --pwsh pwsh
 ```
 
-The watchdog suite uses inert Windows API replacements in a fresh PowerShell 7 process. It executes production function bodies without operating real windows or sending keys:
+Watchdog fixtures use inert Windows APIs; they do not operate real windows or send keys. PowerShell 7 is required for the following command:
 
 ```text
 pwsh -NoLogo -NoProfile -NonInteractive -File tests/Test-Watchdog.ps1
 ```
 
-CI runs installer tests on Windows PowerShell 5.1 and PowerShell 7, and watchdog fixtures on PowerShell 7. Fixtures do not replace manual Windows acceptance: approve both Overrides folders, verify both views, delay/reopen DevTools, restart TH.GL, and check update/uninstall and scheduled-task recovery.
+CI runs the installer suite on Windows PowerShell 5.1 and PowerShell 7, plus watchdog fixtures on PowerShell 7. These checks do not replace manual Overrides permission, game UI, or logon acceptance.
+
+Live staging downloads the current stylesheet into an isolated folder without registering a task or starting the watchdog:
+
+```powershell
+$qaRoot = Join-Path $env:TEMP ('THGL-QA-' + [Guid]::NewGuid().ToString('N'))
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -StageOnly -InstallRoot $qaRoot
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -StageOnly -Uninstall -InstallRoot $qaRoot
+```
+
+The installer validates paths, manifests, response types and file hashes, writes through temporary files, and attempts rollback on caught errors. Logging is bounded and does not append through pre-existing filesystem links. Recovery from forced termination or power loss is not guaranteed. Manifest hashes detect edits; they do not authenticate a user-writable directory.
+
+The upstream stylesheet is downloaded locally and is not redistributed in this repository. [Microsoft Edge Overrides documentation](https://learn.microsoft.com/en-us/microsoft-edge/devtools/sources/).
+
+</details>
 
 <sub>License: [MIT](LICENSE) applies to this repository's original files only.</sub>
